@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react"
 import { ethers } from "ethers"
-import { CONTRACT_CONFIG, MINET_ABI, CELO_RPC_URL } from "@/lib/contract-config"
+import { MINET_ABI, CELO_RPC_URL } from "@/lib/contract-config"
 
 export interface MintResult {
   transactionHash: string
@@ -15,9 +15,19 @@ export function useWeb3Contract() {
   const [error, setError] = useState<string | null>(null)
 
   const mintCredential = useCallback(
-    async (signer: ethers.Signer, toAddress: string, ipfsUri: string): Promise<MintResult | null> => {
+    async (
+      signer: ethers.Signer,
+      toAddress: string,
+      ipfsUri: string,
+      contractAddress?: string,
+    ): Promise<MintResult | null> => {
       if (!signer) {
         setError("No signer provided")
+        return null
+      }
+
+      if (!contractAddress) {
+        setError("No contract address provided")
         return null
       }
 
@@ -25,9 +35,10 @@ export function useWeb3Contract() {
       setError(null)
 
       try {
-        const contract = new ethers.Contract(CONTRACT_CONFIG.address, MINET_ABI, signer)
+        const contract = new ethers.Contract(contractAddress, MINET_ABI, signer)
 
         console.log("Calling contract.mint() with ABI encoding...")
+        console.log("Contract Address:", contractAddress)
         console.log("To:", toAddress)
         console.log("TokenURI:", ipfsUri.substring(0, 50) + "...")
 
@@ -76,10 +87,15 @@ export function useWeb3Contract() {
     [],
   )
 
-  const getBalance = useCallback(async (walletAddress: string) => {
+  const getBalance = useCallback(async (walletAddress: string, contractAddress?: string) => {
+    if (!contractAddress) {
+      console.error("No contract address provided for balance check")
+      return 0
+    }
+
     try {
       const provider = new ethers.JsonRpcProvider(CELO_RPC_URL)
-      const contract = new ethers.Contract(CONTRACT_CONFIG.address, MINET_ABI, provider)
+      const contract = new ethers.Contract(contractAddress, MINET_ABI, provider)
 
       const balance = await contract.balanceOf(walletAddress)
       return Number(balance)
