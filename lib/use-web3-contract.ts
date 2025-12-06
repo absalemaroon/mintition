@@ -37,22 +37,13 @@ export function useWeb3Contract() {
       try {
         const contract = new ethers.Contract(contractAddress, MINET_ABI, signer)
 
-        console.log("Calling contract.mint() with ABI encoding...")
-        console.log("Contract Address:", contractAddress)
-        console.log("To:", toAddress)
-        console.log("TokenURI:", ipfsUri.substring(0, 50) + "...")
-
         const tx = await contract.mint(toAddress, ipfsUri)
-
-        console.log("Transaction sent:", tx.hash)
 
         const receipt = await tx.wait(1)
 
         if (!receipt) {
           throw new Error("Transaction failed - no receipt")
         }
-
-        console.log("Transaction confirmed at block:", receipt.blockNumber)
 
         const events = receipt.logs
           .map((log: any) => {
@@ -66,8 +57,6 @@ export function useWeb3Contract() {
 
         const tokenId = events[0]?.args[1]?.toString() || "unknown"
 
-        console.log("Token ID minted:", tokenId)
-
         const result: MintResult = {
           transactionHash: tx.hash,
           blockNumber: receipt.blockNumber,
@@ -77,7 +66,6 @@ export function useWeb3Contract() {
         return result
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to mint credential"
-        console.error("Mint error:", message)
         setError(message)
         return null
       } finally {
@@ -89,7 +77,6 @@ export function useWeb3Contract() {
 
   const getBalance = useCallback(async (walletAddress: string, contractAddress?: string) => {
     if (!contractAddress) {
-      console.error("No contract address provided for balance check")
       return 0
     }
 
@@ -100,7 +87,6 @@ export function useWeb3Contract() {
       const balance = await contract.balanceOf(walletAddress)
       return Number(balance)
     } catch (err) {
-      console.error("Error getting balance:", err)
       return 0
     }
   }, [])
@@ -110,5 +96,43 @@ export function useWeb3Contract() {
     getBalance,
     isMinting,
     error,
+  }
+}
+
+export async function mintCredential(
+  signer: ethers.Signer,
+  toAddress: string,
+  ipfsUri: string,
+  contractAddress: string,
+): Promise<MintResult | null> {
+  try {
+    const contract = new ethers.Contract(contractAddress, MINET_ABI, signer)
+    const tx = await contract.mint(toAddress, ipfsUri)
+    const receipt = await tx.wait(1)
+
+    if (!receipt) {
+      throw new Error("Transaction failed - no receipt")
+    }
+
+    const events = receipt.logs
+      .map((log: any) => {
+        try {
+          return contract.interface.parseLog(log)
+        } catch {
+          return null
+        }
+      })
+      .filter((e: any) => e && e.name === "CredentialMinted")
+
+    const tokenId = events[0]?.args[1]?.toString() || "unknown"
+
+    return {
+      transactionHash: tx.hash,
+      blockNumber: receipt.blockNumber,
+      tokenId,
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to mint credential"
+    throw new Error(message)
   }
 }

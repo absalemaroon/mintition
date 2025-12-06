@@ -6,8 +6,6 @@ export async function saveBatch(
   description?: string,
 ) {
   try {
-    console.log("[v0] Saving batch with Supabase:", { name, walletCount: wallets.length })
-
     if (!name || name.trim() === "") {
       throw new Error("Batch name is required")
     }
@@ -40,31 +38,25 @@ export async function saveBatch(
       .single()
 
     if (error) {
-      console.error("[v0] Supabase error details:", error)
       throw new Error(`Supabase error: ${error.message}`)
     }
 
-    console.log("[v0] Batch saved successfully:", { id: data?.id })
     return data
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error)
-    console.error("[v0] Error saving batch:", errorMsg, error)
     throw new Error(`Failed to save batch: ${errorMsg}`)
   }
 }
 
 export async function getAllBatches() {
   try {
-    console.log("[v0] Fetching all batches")
     const supabase = createAdminClient()
     const { data, error } = await supabase.from("wallet_batches").select("*").order("created_at", { ascending: false })
 
     if (error) {
-      console.error("[v0] Supabase error details:", error)
       throw new Error(`Supabase error: ${error.message}`)
     }
 
-    // Transform snake_case to camelCase for consistency
     const transformedData = (data || []).map((batch: any) => ({
       id: batch.id,
       name: batch.name,
@@ -77,31 +69,25 @@ export async function getAllBatches() {
       updatedAt: batch.updated_at,
     }))
 
-    console.log("[v0] Fetched batches:", transformedData.length)
     return transformedData
   } catch (error) {
-    console.error("[v0] Error fetching batches:", error)
     return []
   }
 }
 
 export async function getBatchById(id: string) {
   try {
-    console.log("[v0] Fetching batch by id:", id)
     const supabase = createAdminClient()
     const { data, error } = await supabase.from("wallet_batches").select("*").eq("id", id).single()
 
     if (error && error.code !== "PGRST116") {
-      console.error("[v0] Supabase error details:", error)
       throw new Error(`Supabase error: ${error.message}`)
     }
 
     if (!data) {
-      console.log("[v0] Batch not found")
       return null
     }
 
-    // Transform snake_case to camelCase
     const transformedData = {
       id: data.id,
       name: data.name,
@@ -114,17 +100,14 @@ export async function getBatchById(id: string) {
       updatedAt: data.updated_at,
     }
 
-    console.log("[v0] Fetched batch:", transformedData.id)
     return transformedData
   } catch (error) {
-    console.error("[v0] Error fetching batch:", error)
     return null
   }
 }
 
 export async function updateBatchAfterFunding(id: string, totalFunded: string) {
   try {
-    console.log("[v0] Updating batch after funding:", { id, totalFunded })
     const supabase = createAdminClient()
     const { data, error } = await supabase
       .from("wallet_batches")
@@ -137,21 +120,17 @@ export async function updateBatchAfterFunding(id: string, totalFunded: string) {
       .single()
 
     if (error) {
-      console.error("[v0] Supabase error details:", error)
       throw new Error(`Supabase error: ${error.message}`)
     }
 
-    console.log("[v0] Batch updated successfully")
     return data
   } catch (error) {
-    console.error("[v0] Error updating batch:", error)
     throw new Error(`Failed to update batch: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
 
 export async function updateBatchMints(id: string, totalMints: number) {
   try {
-    console.log("[v0] Updating batch mints:", { id, totalMints })
     const supabase = createAdminClient()
     const { data, error } = await supabase
       .from("wallet_batches")
@@ -164,14 +143,11 @@ export async function updateBatchMints(id: string, totalMints: number) {
       .single()
 
     if (error) {
-      console.error("[v0] Supabase error details:", error)
       throw new Error(`Supabase error: ${error.message}`)
     }
 
-    console.log("[v0] Batch mints updated successfully")
     return data
   } catch (error) {
-    console.error("[v0] Error updating mints:", error)
     throw new Error(`Failed to update batch mints: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
