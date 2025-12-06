@@ -172,16 +172,9 @@ export default function Dashboard() {
   }
 
   const sendCeloToWallets = async () => {
-    if (!signer) {
-      toast.error("Wallet not connected", {
-        description: "Connect MetaMask first",
-      })
-      return
-    }
-
     if (!wallets.length) {
-      toast.error("No wallets to fund", {
-        description: "Generate wallets first",
+      toast.error("No wallets generated", {
+        description: "Generate wallets first before funding",
       })
       return
     }
@@ -261,13 +254,6 @@ export default function Dashboard() {
     if (!contractAddress || contractAddress.trim() === "") {
       toast.error("Contract address required", {
         description: "Please enter a smart contract address",
-      })
-      return
-    }
-
-    if (!signer) {
-      toast.error("Wallet not connected", {
-        description: "Please connect your wallet first",
       })
       return
     }
@@ -605,171 +591,4 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                <Alert className="border-blue-500/50 bg-blue-500/10">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>You can update the contract address at any time before minting</AlertDescription>
-                </Alert>
-              </CardContent>
-            </Card>
-
-            {/* Mint Section */}
-            <Card className="glass">
-              <CardHeader>
-                <CardTitle>Mint NFTs</CardTitle>
-                <CardDescription>Mint NFTs to all wallets</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2 p-3 rounded bg-secondary/50 border border-border/50">
-                  <p className="text-sm font-medium">Status:</p>
-                  <p className="text-sm">
-                    <span className="font-semibold">{wallets.length}</span> wallets total
-                  </p>
-                  <p className="text-sm">
-                    <span className="font-semibold">{fundedWalletCount}</span> funded wallets
-                  </p>
-                  <p className="text-sm">
-                    Contract:{" "}
-                    <span className="font-mono text-xs">
-                      {contractAddress ? `${contractAddress.slice(0, 10)}...${contractAddress.slice(-8)}` : "Not set"}
-                    </span>
-                  </p>
-                </div>
-
-                <div className="flex gap-2">
-                  <Button
-                    onClick={handleMint}
-                    disabled={isMinting || wallets.length === 0 || !contractAddress}
-                    className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
-                  >
-                    {isMinting ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Minting...
-                      </>
-                    ) : (
-                      "Start Minting All Wallets"
-                    )}
-                  </Button>
-                  {isMinting && (
-                    <Button onClick={stopMinting} variant="destructive" className="gap-2">
-                      <X className="w-4 h-4" />
-                      Stop
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-            {/* Transaction history section - existing code ... */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Transaction History ({transactions.length})</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {transactions.length === 0 ? (
-                  <div className="text-center py-8">
-                    <p className="text-muted-foreground text-sm">No transactions yet</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {transactions.map((tx, i) => (
-                      <div
-                        key={i}
-                        className="p-3 sm:p-4 rounded bg-secondary/50 border border-border/50 flex items-start gap-3 hover:bg-secondary/75 transition-colors"
-                      >
-                        <div className="mt-1 flex-shrink-0">
-                          {tx.status === "success" && <CheckCircle className="w-5 h-5 text-green-500" />}
-                          {tx.status === "pending" && <Clock className="w-5 h-5 text-yellow-500 animate-spin" />}
-                          {tx.status === "failed" && <AlertCircle className="w-5 h-5 text-red-500" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs sm:text-sm font-mono break-all text-foreground">{tx.hash}</p>
-                          <div className="flex flex-wrap gap-2 mt-1 text-xs">
-                            <span className="text-muted-foreground">{new Date(tx.timestamp).toLocaleTimeString()}</span>
-                            <span
-                              className={
-                                tx.status === "success"
-                                  ? "text-green-400"
-                                  : tx.status === "pending"
-                                    ? "text-yellow-400"
-                                    : "text-red-400"
-                              }
-                            >
-                              {tx.status.toUpperCase()}
-                            </span>
-                          </div>
-                          <p className="text-xs font-mono text-muted-foreground mt-1 break-all">
-                            {tx.wallet.slice(0, 10)}...{tx.wallet.slice(-8)}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-
-        {/* Batch Management Section - Kept for now, could be refactored */}
-        <section className="space-y-4 mt-8">
-          <h2 className="text-2xl font-bold">Wallet Batches</h2>
-
-          {/* Load Existing Batch */}
-          {batches.length > 0 && (
-            <Card className="glass">
-              <CardHeader>
-                <CardTitle>Load Saved Batch</CardTitle>
-                <CardDescription>Reuse previously generated wallet batches</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {batches.map((batch) => (
-                    <div
-                      key={batch.id}
-                      className={`p-4 border rounded-lg cursor-pointer transition ${
-                        selectedBatchId === batch.id
-                          ? "border-primary bg-primary/10"
-                          : "border-border hover:border-primary/50"
-                      }`}
-                      onClick={() => loadBatchFromDB(batch.id)}
-                    >
-                      <h3 className="font-semibold">{batch.name}</h3>
-                      <p className="text-sm text-muted-foreground">{batch.walletCount} wallets</p>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        {new Date(batch.createdAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Save Batch */}
-          {wallets.length > 0 && !selectedBatchId && (
-            <Card className="glass">
-              <CardHeader>
-                <CardTitle>Save Current Batch</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Batch Name</label>
-                  <input
-                    type="text"
-                    value={batchName}
-                    onChange={(e) => setBatchName(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg bg-background"
-                    placeholder="e.g., Marketing Campaign Batch 1"
-                  />
-                </div>
-                <Button onClick={saveBatchToDB} disabled={isSavingBatch} className="w-full">
-                  {isSavingBatch ? "Saving..." : "Save Batch"}
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-        </section>
-      </div>
-    </div>
-  )
-}
+   
