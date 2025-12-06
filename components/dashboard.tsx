@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { AlertCircle, CheckCircle, Clock, Loader, LogOut } from "lucide-react"
+import { AlertCircle, CheckCircle, Clock, LogOut, Loader2, X } from "lucide-react"
 import { ethers } from "ethers"
 import { toast } from "sonner"
 import { storage } from "@/lib/storage"
@@ -258,9 +258,9 @@ export default function Dashboard() {
   }
 
   const handleMint = async () => {
-    if (!isContractValid) {
-      toast.error("Contract not verified", {
-        description: "Please verify your smart contract address first",
+    if (!contractAddress || contractAddress.trim() === "") {
+      toast.error("Contract address required", {
+        description: "Please enter a smart contract address",
       })
       return
     }
@@ -272,10 +272,9 @@ export default function Dashboard() {
       return
     }
 
-    const fundedWallets = wallets.filter((w) => w.fundingStatus === "funded")
-    if (fundedWallets.length === 0) {
-      toast.error("No funded wallets", {
-        description: "Auto-fund wallets using your private key first",
+    if (wallets.length === 0) {
+      toast.error("No wallets generated", {
+        description: "Generate wallets first before minting",
       })
       return
     }
@@ -285,31 +284,24 @@ export default function Dashboard() {
     setIsMinting(true)
 
     const mintingToastId = toast.loading("Minting started...", {
-      description: `Minting NFTs with ${fundedWallets.length} wallets`,
+      description: `Minting NFTs with ${wallets.length} wallets`,
     })
-    console.log("Starting minting process with funded wallets...")
+    console.log("[v0] Starting minting process with all wallets...")
 
     let successCount = 0
     let failureCount = 0
 
-    // Iterate over all wallets, but only mint if funded
     for (let i = 0; i < wallets.length; i++) {
       if (controller.signal.aborted) {
-        console.log("Minting stopped by user")
+        console.log("[v0] Minting stopped by user")
         break
       }
 
       const wallet = wallets[i]
 
-      if (wallet.fundingStatus !== "funded") {
-        console.log(`Skipping unfunded wallet ${i + 1}`)
-        continue
-      }
-
       try {
-        console.log(`Minting with wallet ${i + 1}: ${wallet.address}`)
+        console.log(`[v0] Minting with wallet ${i + 1}: ${wallet.address}`)
 
-        // Use the wallet's private key to create a signer
         const walletInstance = new ethers.Wallet(wallet.privateKey, provider)
 
         const ipfsUri = `data:application/json;base64,${btoa(
@@ -321,7 +313,7 @@ export default function Dashboard() {
           }),
         )}`
 
-        console.log(`Generated tokenURI for wallet ${i + 1}`)
+        console.log(`[v0] Generated tokenURI for wallet ${i + 1}`)
 
         const result = await mintCredential(walletInstance, wallet.address, ipfsUri, contractAddress)
 
@@ -341,10 +333,10 @@ export default function Dashboard() {
           setWallets(updatedWallets)
           storage.saveWallets(updatedWallets as any)
 
-          console.log(`Mint successful for wallet ${i + 1}, tokenId: ${result.tokenId}`)
+          console.log(`[v0] Mint successful for wallet ${i + 1}, tokenId: ${result.tokenId}`)
 
           toast.success(`NFT Minted #${i + 1}`, {
-            description: `TokenId: ${result.tokenId}`,
+            description: `Tx: ${result.transactionHash.slice(0, 10)}...`,
           })
         } else {
           addTransaction({
@@ -354,14 +346,14 @@ export default function Dashboard() {
             wallet: wallet.address,
           })
           failureCount++
-          console.log(`Mint failed for wallet ${i + 1}`)
+          console.log(`[v0] Mint failed for wallet ${i + 1}`)
 
           toast.error(`Mint failed #${i + 1}`, {
             description: "Transaction reverted on chain",
           })
         }
       } catch (error) {
-        console.error(`Error minting with wallet ${i + 1}:`, error)
+        console.error(`[v0] Error minting with wallet ${i + 1}:`, error)
         addTransaction({
           hash: "error",
           timestamp: Date.now(),
@@ -381,7 +373,7 @@ export default function Dashboard() {
 
     toast.dismiss(mintingToastId)
     toast.success("Minting completed", {
-      description: `${successCount} succeeded, ${failureCount} failed`,
+      description: `Success: ${successCount}, Failed: ${failureCount}`,
     })
   }
 
@@ -415,7 +407,6 @@ export default function Dashboard() {
       return
     }
 
-    // Ensure we're exporting the correct format, possibly from storage directly if it's the source of truth
     const csv = storage.exportWalletsAsCSV()
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
     const link = document.createElement("a")
@@ -521,43 +512,9 @@ export default function Dashboard() {
     }
   }
 
-  const validateContractAddress = async () => {
-    if (!ethers.isAddress(contractAddress)) {
-      toast.error("Invalid contract address", {
-        description: "Please enter a valid Ethereum address",
-      })
-      setIsContractValid(false)
-      return
-    }
-
-    try {
-      if (!provider) {
-        toast.error("Provider not initialized", {
-          description: "Please connect your wallet first",
-        })
-        return
-      }
-
-      const code = await provider.getCode(contractAddress)
-      if (code === "0x") {
-        toast.error("No contract found", {
-          description: "This address does not contain a smart contract on the current network",
-        })
-        setIsContractValid(false)
-      } else {
-        toast.success("Contract verified!", {
-          description: "Smart contract found at this address",
-        })
-        setIsContractValid(true)
-        storage.saveContractAddress(contractAddress)
-      }
-    } catch (error) {
-      console.error("Contract validation error:", error)
-      toast.error("Validation failed", {
-        description: "Could not verify contract address",
-      })
-      setIsContractValid(false)
-    }
+  const handleContractAddressChange = (address: string) => {
+    setContractAddress(address)
+    storage.saveContractAddress(address)
   }
 
   const handleUpdateWallets = (updatedWallets: MintWallet[]) => {
@@ -630,7 +587,7 @@ export default function Dashboard() {
             <Card className="glass border-purple-500/20">
               <CardHeader>
                 <CardTitle>Smart Contract Configuration</CardTitle>
-                <CardDescription>Enter and verify your NFT contract address</CardDescription>
+                <CardDescription>Enter your NFT contract addresses</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
@@ -639,41 +596,18 @@ export default function Dashboard() {
                     <Input
                       placeholder="0x97161a87229d3A8E0Bd2Fbcd408eE6c9f65823ae"
                       value={contractAddress}
-                      onChange={(e) => {
-                        setContractAddress(e.target.value)
-                        setIsContractValid(false)
-                      }}
+                      onChange={(e) => handleContractAddressChange(e.target.value)}
                       className="font-mono text-sm"
                     />
-                    <Button
-                      onClick={validateContractAddress}
-                      variant="outline"
-                      className="w-full bg-transparent"
-                      disabled={!ethers.isAddress(contractAddress) || !provider}
-                    >
-                      {isContractValid ? (
-                        <>
-                          <CheckCircle className="w-4 h-4 mr-2 text-green-500" />
-                          Contract Verified
-                        </>
-                      ) : (
-                        "Verify Contract"
-                      )}
-                    </Button>
+                    <div className="text-xs text-muted-foreground p-2 bg-secondary/50 rounded">
+                      Enter any contract address - no verification needed
+                    </div>
                   </div>
                 </div>
 
-                <Alert
-                  className={
-                    isContractValid ? "border-green-500/50 bg-green-500/10" : "border-yellow-500/50 bg-yellow-500/10"
-                  }
-                >
+                <Alert className="border-blue-500/50 bg-blue-500/10">
                   <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    {isContractValid
-                      ? "✓ Smart contract verified and ready for minting"
-                      : "⚠ Please verify your contract address before minting"}
-                  </AlertDescription>
+                  <AlertDescription>You can update the contract address at any time before minting</AlertDescription>
                 </Alert>
               </CardContent>
             </Card>
@@ -682,48 +616,47 @@ export default function Dashboard() {
             <Card className="glass">
               <CardHeader>
                 <CardTitle>Mint NFTs</CardTitle>
-                <CardDescription>Mint NFTs using funded wallets</CardDescription>
+                <CardDescription>Mint NFTs to all wallets</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2 p-3 rounded bg-secondary/50 border border-border/50">
                   <p className="text-sm font-medium">Status:</p>
                   <p className="text-sm">
-                    <span className="font-semibold">{wallets.filter((w) => w.fundingStatus === "funded").length}</span>{" "}
-                    funded wallets
+                    <span className="font-semibold">{wallets.length}</span> wallets total
+                  </p>
+                  <p className="text-sm">
+                    <span className="font-semibold">{fundedWalletCount}</span> funded wallets
                   </p>
                   <p className="text-sm">
                     Contract:{" "}
                     <span className="font-mono text-xs">
-                      {contractAddress.slice(0, 10)}...{contractAddress.slice(-8)}
+                      {contractAddress ? `${contractAddress.slice(0, 10)}...${contractAddress.slice(-8)}` : "Not set"}
                     </span>
                   </p>
                 </div>
 
-                <Button
-                  onClick={handleMint}
-                  disabled={
-                    isMinting ||
-                    !signer ||
-                    !isContractValid ||
-                    wallets.filter((w) => w.fundingStatus === "funded").length === 0
-                  }
-                  className="w-full"
-                  size="lg"
-                >
-                  {isMinting ? (
-                    <>
-                      <Loader className="w-4 h-4 mr-2 animate-spin" />
-                      Minting...
-                    </>
-                  ) : (
-                    "Start Minting"
-                  )}
-                </Button>
-                {isMinting && (
-                  <Button onClick={stopMinting} variant="destructive" className="w-full">
-                    Stop Minting
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleMint}
+                    disabled={isMinting || wallets.length === 0 || !contractAddress}
+                    className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                  >
+                    {isMinting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Minting...
+                      </>
+                    ) : (
+                      "Start Minting All Wallets"
+                    )}
                   </Button>
-                )}
+                  {isMinting && (
+                    <Button onClick={stopMinting} variant="destructive" className="gap-2">
+                      <X className="w-4 h-4" />
+                      Stop
+                    </Button>
+                  )}
+                </div>
               </CardContent>
             </Card>
             {/* Transaction history section - existing code ... */}
