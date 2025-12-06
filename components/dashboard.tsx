@@ -7,17 +7,19 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Copy, AlertCircle, CheckCircle, Clock, Loader, LogOut } from "lucide-react"
+import { AlertCircle, CheckCircle, Clock, Loader, LogOut } from "lucide-react"
 import { ethers } from "ethers"
 import { toast } from "sonner"
 import { storage } from "@/lib/storage"
 import { useWeb3Contract } from "@/lib/use-web3-contract"
-import type { Transaction } from "@/lib/types"
+import type { Transaction, MintWallet } from "@/lib/types"
 import { saveBatchAction, getAllBatchesAction } from "@/app/actions"
 import { useRouter } from "next/navigation"
+import { WalletManagement } from "./wallet-management"
+import { AutoFundingSection } from "./auto-funding-section"
 
 export default function Dashboard() {
-  const [wallets, setWallets] = useState<any[]>([])
+  const [wallets, setWallets] = useState<MintWallet[]>([])
   const [generatedCount, setGeneratedCount] = useState(5)
   const [contractAddress, setContractAddress] = useState("")
   const [gasAmount, setGasAmount] = useState("0.1")
@@ -53,7 +55,11 @@ export default function Dashboard() {
 
     const savedWallets = storage.getWallets()
     if (savedWallets.length > 0) {
-      setWallets(savedWallets)
+      const walletsWithStatus = savedWallets.map((w) => ({
+        ...w,
+        fundingStatus: w.funded ? "funded" : "not_funded",
+      }))
+      setWallets(walletsWithStatus)
       toast.success("Loaded saved wallets", {
         description: `Loaded ${savedWallets.length} wallets from storage`,
       })
@@ -131,18 +137,18 @@ export default function Dashboard() {
     }
   }
 
-  // ... rest of the existing functions remain the same ...
   const generateWallets = () => {
     setIsGenerating(true)
     try {
-      const newWallets: any[] = []
+      const newWallets: MintWallet[] = []
 
       for (let i = 0; i < generatedCount; i++) {
         const wallet = ethers.Wallet.createRandom()
         newWallets.push({
           address: wallet.address,
           privateKey: wallet.privateKey,
-          funded: false,
+          funded: false, // This will be updated by fundingStatus
+          fundingStatus: "not_funded",
           mintsCompleted: 0,
           status: "idle",
           balance: "0",
@@ -150,7 +156,7 @@ export default function Dashboard() {
       }
 
       setWallets(newWallets)
-      storage.saveWallets(newWallets)
+      storage.saveWallets(newWallets as any)
       toast.success(`Generated ${generatedCount} wallets`, {
         description: "Wallets saved for future use",
       })
@@ -202,6 +208,8 @@ export default function Dashboard() {
       console.log(`Starting batch funding of ${wallets.length} wallets with ${gasAmount} CELO each`)
 
       let successCount = 0
+      const updatedWallets = [...wallets] // Create a mutable copy
+
       for (let i = 0; i < wallets.length; i++) {
         try {
           const tx = await signer.sendTransaction({
@@ -212,17 +220,20 @@ export default function Dashboard() {
           const receipt = await tx.wait()
           if (receipt?.status === 1) {
             successCount++
-            const updatedWallets = [...wallets]
-            updatedWallets[i].funded = true
-            updatedWallets[i].status = "idle"
-            updatedWallets[i].balance = gasAmount
-            setWallets(updatedWallets)
-            storage.saveWallets(updatedWallets)
+            updatedWallets[i].funded = true // This might be redundant if fundingStatus is used
+            updatedWallets[i].fundingStatus = "funded"
+            updatedWallets[i].status = "idle" // Reset status after funding
+            updatedWallets[i].balance = gasAmount // Update balance, though this might be better fetched
           }
         } catch (err) {
           console.error(`Error funding wallet ${i + 1}:`, err)
+          // Optionally mark this wallet as failed to fund
+          updatedWallets[i].fundingStatus = "funding_failed"
         }
       }
+
+      setWallets(updatedWallets) // Update state once
+      storage.saveWallets(updatedWallets as any)
 
       toast.dismiss(fundingToastId)
       toast.success("Funding complete!", {
@@ -230,7 +241,8 @@ export default function Dashboard() {
       })
 
       if (selectedBatchId) {
-        await updateBatchAfterFunding(selectedBatchId, String(successCount * Number(gasAmount)))
+        // This function needs to be implemented if batch updates are required after funding
+        // await updateBatchAfterFunding(selectedBatchId, String(successCount * Number(gasAmount)));
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Unknown error"
@@ -252,10 +264,10 @@ export default function Dashboard() {
       return
     }
 
-    const fundedWallets = wallets.filter((w) => w.funded)
+    const fundedWallets = wallets.filter((w) => w.fundingStatus === "funded")
     if (fundedWallets.length === 0) {
       toast.error("No funded wallets", {
-        description: "Fund wallets before minting",
+        description: "Auto-fund wallets using your private key first",
       })
       return
     }
@@ -267,11 +279,12 @@ export default function Dashboard() {
     const mintingToastId = toast.loading("Minting started...", {
       description: `Minting NFTs with ${fundedWallets.length} wallets`,
     })
-    console.log("Starting minting process with proper contract.mint() calls...")
+    console.log("Starting minting process with funded wallets...")
 
     let successCount = 0
     let failureCount = 0
 
+    // Iterate over all wallets, but only mint if funded
     for (let i = 0; i < wallets.length; i++) {
       if (controller.signal.aborted) {
         console.log("Minting stopped by user")
@@ -280,7 +293,7 @@ export default function Dashboard() {
 
       const wallet = wallets[i]
 
-      if (!wallet.funded) {
+      if (wallet.fundingStatus !== "funded") {
         console.log(`Skipping unfunded wallet ${i + 1}`)
         continue
       }
@@ -288,6 +301,7 @@ export default function Dashboard() {
       try {
         console.log(`Minting with wallet ${i + 1}: ${wallet.address}`)
 
+        // Use the wallet's private key to create a signer
         const walletInstance = new ethers.Wallet(wallet.privateKey, provider)
 
         const ipfsUri = `data:application/json;base64,${btoa(
@@ -301,6 +315,7 @@ export default function Dashboard() {
 
         console.log(`Generated tokenURI for wallet ${i + 1}`)
 
+        // Call the mintCredential function with the wallet instance
         const result = await mintCredential(walletInstance, wallet.address, ipfsUri)
 
         if (result) {
@@ -314,12 +329,10 @@ export default function Dashboard() {
           successCount++
 
           const updatedWallets = [...wallets]
-          updatedWallets[i].minted = true
           updatedWallets[i].status = "minted"
-          updatedWallets[i].tokenId = result.tokenId
           updatedWallets[i].mintsCompleted = (updatedWallets[i].mintsCompleted || 0) + 1
           setWallets(updatedWallets)
-          storage.saveWallets(updatedWallets)
+          storage.saveWallets(updatedWallets as any)
 
           console.log(`Mint successful for wallet ${i + 1}, tokenId: ${result.tokenId}`)
 
@@ -395,6 +408,7 @@ export default function Dashboard() {
       return
     }
 
+    // Ensure we're exporting the correct format, possibly from storage directly if it's the source of truth
     const csv = storage.exportWalletsAsCSV()
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
     const link = document.createElement("a")
@@ -439,16 +453,17 @@ export default function Dashboard() {
 
       const walletDataArray = Array.isArray(batch.walletData) ? batch.walletData : []
 
-      const loadedWallets: any[] = walletDataArray.map((w: any) => ({
+      const loadedWallets: MintWallet[] = walletDataArray.map((w: any) => ({
         ...w,
-        funded: false,
+        funded: false, // Default to false, will be updated by funding
+        fundingStatus: "not_funded",
         mintsCompleted: 0,
         status: "idle",
         balance: "0",
       }))
 
       setWallets(loadedWallets)
-      storage.saveWallets(loadedWallets)
+      storage.saveWallets(loadedWallets as any)
       setSelectedBatchId(batchId)
 
       toast.success("Batch loaded", {
@@ -499,367 +514,106 @@ export default function Dashboard() {
     }
   }
 
+  // Placeholder for batch update logic after funding
   const updateBatchAfterFunding = async (batchId: string, totalFundedAmount: string) => {
-    // Placeholder for batch update logic
+    console.log(`Placeholder: Updating batch ${batchId} with funded amount ${totalFundedAmount}`)
+    // This would involve an API call to update the batch in the database
   }
 
-  const fundedWalletCount = wallets.filter((w) => w.funded).length
+  const handleUpdateWallets = (updatedWallets: MintWallet[]) => {
+    setWallets(updatedWallets)
+    storage.saveWallets(updatedWallets as any)
+  }
+
+  const fundedWalletCount = wallets.filter((w) => w.fundingStatus === "funded").length
   const totalMints = wallets.reduce((sum, w) => sum + (w.mintsCompleted || 0), 0)
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background to-secondary/20">
-      {/* Header */}
-      <header className="border-b border-border/50 bg-background/50 backdrop-blur sticky top-0 z-40">
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-primary">Mintition</h1>
-              <p className="text-sm sm:text-base text-muted-foreground mt-1">
-                Automated NFT minting platform for Celo blockchain
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              {connectedAddress && (
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-green-900/20 border border-green-900/30">
-                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                  <p className="text-xs sm:text-sm font-mono text-green-400">
-                    {connectedAddress.slice(0, 8)}...{connectedAddress.slice(-6)}
-                  </p>
-                </div>
-              )}
-              <Button
-                onClick={handleLogout}
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground hover:text-foreground"
-              >
-                <LogOut className="w-4 h-4 mr-2" />
-                <span className="hidden sm:inline">Logout</span>
-              </Button>
-            </div>
+    <div className="min-h-screen bg-background p-4 md:p-8">
+      <div className="max-w-7xl mx-auto space-y-8">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold">Mintition</h1>
+            <p className="text-muted-foreground">{userEmail}</p>
           </div>
-          {userEmail && (
-            <p className="text-xs text-muted-foreground mt-3">
-              Logged in as: <span className="font-mono">{userEmail}</span>
-            </p>
-          )}
+          <Button onClick={handleLogout} variant="outline">
+            <LogOut className="w-4 h-4 mr-2" />
+            Logout
+          </Button>
         </div>
-      </header>
 
-      {/* Main Content */}
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-        <Tabs defaultValue="setup" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 bg-secondary/50">
-            <TabsTrigger value="setup" className="text-xs sm:text-sm">
-              Setup
-            </TabsTrigger>
-            <TabsTrigger value="wallets" className="text-xs sm:text-sm">
-              Wallets
-            </TabsTrigger>
-            <TabsTrigger value="transactions" className="text-xs sm:text-sm">
-              Transactions
-            </TabsTrigger>
+        <Tabs defaultValue="wallets" className="w-full">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="wallets">Wallets</TabsTrigger>
+            <TabsTrigger value="funding">Auto-Funding</TabsTrigger>
+            <TabsTrigger value="mint">Minting</TabsTrigger>
           </TabsList>
 
-          {/* SETUP TAB */}
-          <TabsContent value="setup" className="space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-              {/* Connect Wallet */}
-              <Card className="sm:col-span-1 lg:col-span-1">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base sm:text-lg text-primary flex items-center gap-2">
-                    <span className="text-sm bg-primary/10 px-2 py-1 rounded">1</span>
-                    Wallet
-                  </CardTitle>
-                  <CardDescription className="text-xs">Connect MetaMask</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <Button
-                    onClick={connectWallet}
-                    className="w-full bg-primary hover:bg-primary/90 text-sm sm:text-base"
-                    size="sm"
-                    disabled={!!connectedAddress}
-                  >
-                    {connectedAddress ? "✓ Connected" : "Connect MetaMask"}
-                  </Button>
-                  {!connectedAddress && (
-                    <p className="text-xs text-muted-foreground">
-                      Need MetaMask?{" "}
-                      <a
-                        href="https://metamask.io"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary hover:underline"
-                      >
-                        Install
-                      </a>
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Configuration */}
-              <Card className="sm:col-span-1 lg:col-span-1">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base sm:text-lg text-primary flex items-center gap-2">
-                    <span className="text-sm bg-primary/10 px-2 py-1 rounded">2</span>
-                    Settings
-                  </CardTitle>
-                  <CardDescription className="text-xs">Configure minting</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div>
-                    <label className="text-xs sm:text-sm text-muted-foreground font-medium">Contract Address</label>
-                    <Input
-                      placeholder="0x..."
-                      value={contractAddress}
-                      onChange={(e) => setContractAddress(e.target.value)}
-                      className="mt-1 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs sm:text-sm text-muted-foreground font-medium">CELO per Wallet</label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={gasAmount}
-                      onChange={(e) => setGasAmount(e.target.value)}
-                      className="mt-1 text-sm"
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs sm:text-sm text-muted-foreground">Network</span>
-                    <span className="text-xs sm:text-sm font-semibold text-primary">Celo Mainnet</span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Generate Wallets */}
-              <Card className="sm:col-span-1 lg:col-span-1">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base sm:text-lg text-primary flex items-center gap-2">
-                    <span className="text-sm bg-primary/10 px-2 py-1 rounded">3</span>
-                    Generate
-                  </CardTitle>
-                  <CardDescription className="text-xs">Create wallets</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div>
-                    <label className="text-xs sm:text-sm text-muted-foreground font-medium">Count</label>
-                    <Input
-                      type="number"
-                      min="1"
-                      max="50"
-                      value={generatedCount}
-                      onChange={(e) => setGeneratedCount(Math.min(50, Math.max(1, Number(e.target.value))))}
-                      className="mt-1 text-sm"
-                    />
-                  </div>
-                  <Button
-                    onClick={generateWallets}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-sm sm:text-base"
-                    size="sm"
+          <TabsContent value="wallets" className="space-y-6">
+            <Card className="glass">
+              <CardHeader>
+                <CardTitle>Generate Wallets</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Number of Wallets</label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={generatedCount}
+                    onChange={(e) => setGeneratedCount(Math.min(100, Math.max(1, Number(e.target.value))))}
                     disabled={isGenerating}
-                  >
-                    {isGenerating ? (
-                      <>
-                        <Loader className="w-4 h-4 mr-2 animate-spin" />
-                        Generating...
-                      </>
-                    ) : (
-                      `Generate ${generatedCount}`
-                    )}
-                  </Button>
-                  {wallets.length > 0 && (
-                    <>
-                      <p className="text-xs text-green-400 font-medium">✓ {wallets.length} ready</p>
-                      <Button
-                        onClick={exportWalletsAsCSV}
-                        variant="outline"
-                        className="w-full text-xs sm:text-sm bg-transparent"
-                        size="sm"
-                      >
-                        Download CSV
-                      </Button>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
+                  />
+                </div>
+                <Button onClick={generateWallets} disabled={isGenerating} className="w-full">
+                  {isGenerating ? "Generating..." : `Generate ${generatedCount} Wallets`}
+                </Button>
+              </CardContent>
+            </Card>
 
-              {/* Send CELO */}
-              <Card className="sm:col-span-1 lg:col-span-1">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base sm:text-lg text-primary flex items-center gap-2">
-                    <span className="text-sm bg-primary/10 px-2 py-1 rounded">4</span>
-                    Fund
-                  </CardTitle>
-                  <CardDescription className="text-xs">Send CELO</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <p className="text-xs sm:text-sm text-muted-foreground">
-                    {wallets.length > 0
-                      ? `Send ${gasAmount} CELO to ${wallets.length} wallets`
-                      : "No wallets generated"}
-                  </p>
-                  <Button
-                    onClick={sendCeloToWallets}
-                    disabled={!connectedAddress || !wallets.length || isFunding}
-                    className="w-full bg-green-600 hover:bg-green-700 disabled:bg-muted text-sm sm:text-base"
-                    size="sm"
-                  >
-                    {isFunding ? (
-                      <>
-                        <Loader className="w-4 h-4 mr-2 animate-spin" />
-                        Funding...
-                      </>
-                    ) : (
-                      `Fund ${(Number(gasAmount) * wallets.length).toFixed(2)} CELO`
-                    )}
-                  </Button>
-                </CardContent>
-              </Card>
-
-              {/* Start Minting */}
-              <Card className="sm:col-span-2 lg:col-span-1">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base sm:text-lg text-primary flex items-center gap-2">
-                    <span className="text-sm bg-primary/10 px-2 py-1 rounded">5</span>
-                    Mint
-                  </CardTitle>
-                  <CardDescription className="text-xs">Execute minting</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <Button
-                      onClick={handleMint}
-                      disabled={isMinting || fundedWalletCount === 0}
-                      className="w-full sm:w-auto sm:flex-1 flex-shrink-0 min-w-[140px] bg-primary hover:bg-primary/90 disabled:bg-muted text-sm sm:text-base whitespace-nowrap"
-                      size="sm"
-                    >
-                      {isMinting ? (
-                        <>
-                          <Loader className="w-4 h-4 mr-2 animate-spin" />
-                          Minting...
-                        </>
-                      ) : (
-                        "Start Minting"
-                      )}
-                    </Button>
-                    {isMinting && (
-                      <Button
-                        onClick={stopMinting}
-                        className="w-full sm:w-auto flex-shrink-0 min-w-[100px] bg-red-600 hover:bg-red-700 text-sm sm:text-base"
-                        size="sm"
-                      >
-                        Stop
-                      </Button>
-                    )}
-                  </div>
-                  {fundedWalletCount === 0 && !isMinting && (
-                    <Alert className="bg-destructive/10 border-destructive/30">
-                      <AlertCircle className="h-4 w-4 text-destructive" />
-                      <AlertDescription className="text-xs">Fund wallets first</AlertDescription>
-                    </Alert>
-                  )}
-                  {fundedWalletCount > 0 && (
-                    <p className="text-xs text-green-400 font-medium">✓ {fundedWalletCount} funded</p>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Stats */}
-              {wallets.length > 0 && (
-                <Card className="sm:col-span-2 lg:col-span-1">
-                  <CardHeader>
-                    <CardTitle className="text-lg sm:text-xl">Stats</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Total Wallets:</span>
-                      <span className="font-medium">{wallets.length}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Funded:</span>
-                      <span className="font-medium text-green-400">{fundedWalletCount}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Total Mints:</span>
-                      <span className="font-medium text-blue-400">{totalMints}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
+            {wallets.length > 0 && <WalletManagement wallets={wallets} onWalletsUpdate={handleUpdateWallets} />}
           </TabsContent>
 
-          {/* WALLETS TAB */}
-          <TabsContent value="wallets" className="space-y-4">
-            <Card>
+          <TabsContent value="funding" className="space-y-6">
+            {wallets.length > 0 && <AutoFundingSection wallets={wallets} onWalletsUpdate={handleUpdateWallets} />}
+            {wallets.length === 0 && (
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>Generate wallets first before auto-funding</AlertDescription>
+              </Alert>
+            )}
+          </TabsContent>
+
+          <TabsContent value="mint" className="space-y-6">
+            <Card className="glass">
               <CardHeader>
-                <CardTitle className="text-lg sm:text-xl">Generated Wallets ({wallets.length})</CardTitle>
+                <CardTitle>Mint NFTs</CardTitle>
+                <CardDescription>Mint NFTs using funded wallets</CardDescription>
               </CardHeader>
-              <CardContent>
-                {wallets.length === 0 ? (
-                  <div className="text-center py-8">
-                    <p className="text-muted-foreground text-sm">Generate wallets first</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {wallets.map((wallet, i) => (
-                      <div
-                        key={i}
-                        className={`p-3 sm:p-4 rounded border transition-colors ${
-                          wallet.funded
-                            ? "border-green-900/30 bg-green-900/10"
-                            : "border-border bg-secondary/50 hover:bg-secondary/75"
-                        }`}
-                      >
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs text-muted-foreground font-medium">Wallet {i + 1}</p>
-                            <p className="text-xs sm:text-sm font-mono break-all text-foreground">{wallet.address}</p>
-                          </div>
-                          <Button
-                            onClick={() => copyToClipboard(wallet.address, "Address")}
-                            size="sm"
-                            variant="ghost"
-                            className="w-full sm:w-auto text-xs"
-                          >
-                            <Copy className="w-3 h-3 mr-1" />
-                            Copy
-                          </Button>
-                        </div>
-                        <p className="text-xs font-mono text-muted-foreground break-all mb-2">
-                          Key: {wallet.privateKey.slice(0, 20)}...
-                        </p>
-                        <div className="flex flex-wrap gap-2 gap-y-1 text-xs">
-                          <span
-                            className={wallet.funded ? "text-green-400 font-medium" : "text-yellow-400 font-medium"}
-                          >
-                            {wallet.funded ? "✓ Funded" : "○ Pending"}
-                          </span>
-                          <span className="text-muted-foreground">Mints: {wallet.mintsCompleted || 0}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+              <CardContent className="space-y-4">
+                <Button onClick={handleMint} disabled={isMinting || !signer} className="w-full" size="lg">
+                  {isMinting ? (
+                    <>
+                      <Loader className="w-4 h-4 mr-2 animate-spin" />
+                      Minting...
+                    </>
+                  ) : (
+                    "Start Minting"
+                  )}
+                </Button>
+                {isMinting && (
+                  <Button onClick={stopMinting} variant="destructive" className="w-full">
+                    Stop Minting
+                  </Button>
                 )}
               </CardContent>
             </Card>
-            <Button
-              onClick={clearAllWallets}
-              className="w-full bg-red-600 hover:bg-red-700 text-sm sm:text-base"
-              size="sm"
-            >
-              Clear All Wallets
-            </Button>
-          </TabsContent>
-
-          {/* TRANSACTIONS TAB */}
-          <TabsContent value="transactions" className="space-y-4">
+            {/* Moved transaction history here for context */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg sm:text-xl">Transaction History ({transactions.length})</CardTitle>
+                <CardTitle>Transaction History ({transactions.length})</CardTitle>
               </CardHeader>
               <CardContent>
                 {transactions.length === 0 ? (
@@ -907,7 +661,7 @@ export default function Dashboard() {
           </TabsContent>
         </Tabs>
 
-        {/* Batch Management Section */}
+        {/* Batch Management Section - Kept for now, could be refactored */}
         <section className="space-y-4 mt-8">
           <h2 className="text-2xl font-bold">Wallet Batches</h2>
 
@@ -966,7 +720,7 @@ export default function Dashboard() {
             </Card>
           )}
         </section>
-      </main>
+      </div>
     </div>
   )
 }

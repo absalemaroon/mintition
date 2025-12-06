@@ -19,10 +19,12 @@ export interface MintWallet {
   address: string
   privateKey: string
   funded: boolean
+  fundingStatus: "not_funded" | "funded" | "funding"
   mintsCompleted: number
   balance?: string
   status?: "idle" | "funding" | "scheduled" | "minting" | "completed" | "failed"
   nextMintTime?: number
+  transactionHash?: string
 }
 
 export interface NFTMetadata {

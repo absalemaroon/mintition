@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
+import { Check, X, Clock } from "lucide-react"
 import type { MintWallet } from "@/lib/types"
 import { storage } from "@/lib/storage"
 
@@ -21,7 +22,7 @@ export function WalletManagement({ wallets, onWalletsUpdate, isGenerating }: Wal
 
   const totalBalance = wallets.reduce((sum, w) => sum + Number.parseFloat(w.balance || "0"), 0)
   const totalMints = wallets.reduce((sum, w) => sum + (w.mintsCompleted || 0), 0)
-  const totalGasUsed = (wallets.length * 0.1).toFixed(2)
+  const fundedCount = wallets.filter((w) => w.fundingStatus === "funded").length
 
   const exportCSV = () => {
     const csv = storage.exportWalletsAsCSV()
@@ -35,6 +36,19 @@ export function WalletManagement({ wallets, onWalletsUpdate, isGenerating }: Wal
     toast.success("CSV exported", {
       description: `Downloaded ${wallets.length} wallets`,
     })
+  }
+
+  const getStatusIcon = (fundingStatus: string) => {
+    switch (fundingStatus) {
+      case "funded":
+        return <Check className="w-4 h-4 text-green-500" />
+      case "not_funded":
+        return <X className="w-4 h-4 text-red-500" />
+      case "funding":
+        return <Clock className="w-4 h-4 text-yellow-500" />
+      default:
+        return null
+    }
   }
 
   const getStatusBadgeColor = (status: string) => {
@@ -65,16 +79,16 @@ export function WalletManagement({ wallets, onWalletsUpdate, isGenerating }: Wal
             <p className="text-xl font-bold">{wallets.length}</p>
           </div>
           <div className="bg-secondary/30 p-3 rounded-lg">
-            <p className="text-xs text-muted-foreground">Total Balance</p>
-            <p className="text-xl font-bold">{totalBalance.toFixed(2)} CELO</p>
+            <p className="text-xs text-muted-foreground">Funded Wallets</p>
+            <p className="text-xl font-bold">{fundedCount}</p>
           </div>
           <div className="bg-secondary/30 p-3 rounded-lg">
             <p className="text-xs text-muted-foreground">Total Mints</p>
             <p className="text-xl font-bold">{totalMints}</p>
           </div>
           <div className="bg-secondary/30 p-3 rounded-lg">
-            <p className="text-xs text-muted-foreground">Gas Used</p>
-            <p className="text-xl font-bold">{totalGasUsed} CELO</p>
+            <p className="text-xs text-muted-foreground">Total Balance</p>
+            <p className="text-xl font-bold">{totalBalance.toFixed(2)} CELO</p>
           </div>
         </div>
 
@@ -85,9 +99,9 @@ export function WalletManagement({ wallets, onWalletsUpdate, isGenerating }: Wal
               <tr>
                 <th className="px-4 py-3 text-left font-medium">Wallet Address</th>
                 <th className="px-4 py-3 text-left font-medium">Balance</th>
+                <th className="px-4 py-3 text-left font-medium">Funded</th>
                 <th className="px-4 py-3 text-left font-medium">Mints</th>
                 <th className="px-4 py-3 text-left font-medium">Status</th>
-                <th className="px-4 py-3 text-left font-medium">Next Mint</th>
               </tr>
             </thead>
             <tbody>
@@ -98,6 +112,10 @@ export function WalletManagement({ wallets, onWalletsUpdate, isGenerating }: Wal
                       {wallet.address.slice(0, 10)}...{wallet.address.slice(-8)}
                     </td>
                     <td className="px-4 py-3">{wallet.balance} CELO</td>
+                    <td className="px-4 py-3 flex items-center gap-2">
+                      {getStatusIcon(wallet.fundingStatus || "not_funded")}
+                      <span className="text-xs capitalize">{wallet.fundingStatus || "not_funded"}</span>
+                    </td>
                     <td className="px-4 py-3">{wallet.mintsCompleted || 0}</td>
                     <td className="px-4 py-3">
                       <span
@@ -123,9 +141,6 @@ export function WalletManagement({ wallets, onWalletsUpdate, isGenerating }: Wal
                         )}
                         {wallet.status || "idle"}
                       </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs">
-                      {wallet.nextMintTime ? new Date(wallet.nextMintTime).toLocaleTimeString() : "Not scheduled"}
                     </td>
                   </tr>
                 ))
