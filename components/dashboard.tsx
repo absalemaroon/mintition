@@ -1,60 +1,46 @@
 "use client"
 
-import { useRouter } from "next/navigation"
-
 import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { LogOut, Loader2, X, WalletIcon, Zap, Coins } from "lucide-react"
+import { AlertCircle, CheckCircle, Clock, LogOut, Loader2, X } from "lucide-react"
 import { ethers } from "ethers"
 import { toast } from "sonner"
 import { storage } from "@/lib/storage"
-import { generateWallets } from "@/lib/wallet-utils"
-import { autoFundWallets } from "@/lib/auto-funding"
-import { mintCredential } from "@/lib/use-web3-contract"
-import { Progress } from "@/components/ui/progress"
-import { getAllBatchesAction, saveBatchToDB, loadBatchFromDB } from "@/lib/batch-utils" // Importing missing functions
-
-interface WalletData {
-  address: string
-  privateKey: string
-  status?: "funded" | "not_funded" | "funding" | "minted"
-  mintsCompleted?: number
-  fundingStatus?: string // Keeping for broader compatibility if needed, though status seems primary
-  balance?: string // Keeping for broader compatibility if needed
-}
-
-interface MintTransaction {
-  hash: string
-  timestamp: number
-  status: "success" | "failed" | "pending" // Added pending status
-  wallet: string
-}
+import { useWeb3Contract } from "@/lib/use-web3-contract"
+import type { Transaction, MintWallet } from "@/lib/types"
+import { saveBatchAction, getAllBatchesAction } from "@/app/actions"
+import { useRouter } from "next/navigation"
+import { WalletManagement } from "./wallet-management"
+import { AutoFundingSection } from "./auto-funding-section"
 
 export default function Dashboard() {
-  const router = useRouter()
-  const [wallets, setWallets] = useState<WalletData[]>([])
+  const [wallets, setWallets] = useState<MintWallet[]>([])
   const [generatedCount, setGeneratedCount] = useState(5)
   const [contractAddress, setContractAddress] = useState("0x97161a87229d3A8E0Bd2Fbcd408eE6c9f65823ae")
   const [isContractValid, setIsContractValid] = useState(false)
   const [gasAmount, setGasAmount] = useState("0.1")
   const [networkId, setNetworkId] = useState("42220")
-  const [transactions, setTransactions] = useState<MintTransaction[]>([])
+  const [transactions, setTransactions] = useState<Transaction[]>([])
   const [isMinting, setIsMinting] = useState(false)
   const [isFunding, setIsFunding] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [mintAbortController, setMintAbortController] = useState<AbortController | null>(null)
+  const [connectedAddress, setConnectedAddress] = useState<string>("")
   const [provider, setProvider] = useState<ethers.BrowserProvider | null>(null)
+  const [signer, setSigner] = useState<ethers.Signer | null>(null)
   const [batches, setBatches] = useState<any[]>([])
   const [selectedBatchId, setSelectedBatchId] = useState<string>("")
   const [batchName, setBatchName] = useState(`Batch ${Date.now()}`)
   const [isSavingBatch, setIsSavingBatch] = useState(false)
   const [userEmail, setUserEmail] = useState<string>("")
-  const [fundingProgress, setFundingProgress] = useState(0)
-  const [connectedAddress, setConnectedAddress] = useState<string>("") // Declaring setConnectedAddress
+
+  const { mintCredential, getBalance } = useWeb3Contract()
+  const router = useRouter()
 
   useEffect(() => {
     const getUserEmail = async () => {
@@ -70,48 +56,21 @@ export default function Dashboard() {
 
     const savedWallets = storage.getWallets()
     if (savedWallets.length > 0) {
-      const walletsWithStatus = savedWallets.map((w: any) => ({
+      const walletsWithStatus = savedWallets.map((w) => ({
         ...w,
-        status: w.funded ? "funded" : w.status || "not_funded",
-        fundingStatus: w.funded ? "funded" : w.fundingStatus || "not_funded",
-        mintsCompleted: w.mintsCompleted || 0,
+        fundingStatus: w.funded ? "funded" : "not_funded",
       }))
       setWallets(walletsWithStatus)
       toast.success("Loaded saved wallets", {
         description: `Loaded ${savedWallets.length} wallets from storage`,
       })
     }
-
-    if (typeof window !== "undefined" && window.ethereum) {
-      try {
-        const web3Provider = new ethers.BrowserProvider(window.ethereum)
-        setProvider(web3Provider)
-        window.ethereum
-          .request({ method: "eth_accounts" })
-          .then((accounts: string[]) => {
-            if (accounts.length > 0) {
-              setConnectedAddress(accounts[0])
-            }
-          })
-          .catch(console.error)
-      } catch (error) {
-        console.error("Error initializing Web3 provider:", error)
-        toast.error("Web3 Provider Error", { description: "Could not initialize wallet connection." })
-      }
-    } else {
-      toast.warning("MetaMask not detected", { description: "Please install MetaMask for wallet features." })
-    }
   }, [])
 
   useEffect(() => {
     const loadBatches = async () => {
-      try {
-        const allBatches = await getAllBatchesAction()
-        setBatches(allBatches)
-      } catch (error) {
-        console.error("Error loading batches:", error)
-        toast.error("Failed to load batches", { description: "Could not fetch saved batches." })
-      }
+      const allBatches = await getAllBatchesAction()
+      setBatches(allBatches)
     }
     loadBatches()
   }, [])
@@ -130,20 +89,76 @@ export default function Dashboard() {
     }
   }
 
-  const handleGenerateWallets = (count: number) => {
+  const connectWallet = async () => {
+    if (typeof window === "undefined") {
+      toast.error("Browser environment required", {
+        description: "This feature requires a browser environment",
+      })
+      return
+    }
+
+    if (!window.ethereum) {
+      toast.error("MetaMask not installed", {
+        description: "Please install MetaMask from https://metamask.io",
+      })
+      return
+    }
+
+    try {
+      const accounts = await window.ethereum.request({
+        method: "eth_requestAccounts",
+      })
+      setConnectedAddress(accounts[0])
+
+      const provider = new ethers.BrowserProvider(window.ethereum)
+      setProvider(provider)
+
+      const signer = await provider.getSigner()
+      setSigner(signer)
+
+      toast.success("Wallet connected", {
+        description: `Connected to ${accounts[0].slice(0, 10)}...`,
+      })
+      console.log("Connected to:", accounts[0])
+    } catch (error: any) {
+      if (error.code === -32002) {
+        toast.error("MetaMask request pending", {
+          description: "Check your MetaMask popup",
+        })
+      } else if (error.code === 4001) {
+        toast.error("Connection rejected", {
+          description: "You rejected the connection request",
+        })
+      } else {
+        toast.error("Connection failed", {
+          description: error.message || "Failed to connect wallet",
+        })
+      }
+      console.error("Failed to connect wallet:", error)
+    }
+  }
+
+  const generateWallets = () => {
     setIsGenerating(true)
     try {
-      const newWallets = generateWallets(count)
-      const withStatus = newWallets.map((w) => ({
-        ...w,
-        status: "not_funded" as const,
-        fundingStatus: "not_funded" as const,
-        mintsCompleted: 0,
-        balance: "0",
-      }))
-      setWallets(withStatus)
-      storage.saveWallets(withStatus)
-      toast.success(`Generated ${count} wallets`, {
+      const newWallets: MintWallet[] = []
+
+      for (let i = 0; i < generatedCount; i++) {
+        const wallet = ethers.Wallet.createRandom()
+        newWallets.push({
+          address: wallet.address,
+          privateKey: wallet.privateKey,
+          funded: false, // This will be updated by fundingStatus
+          fundingStatus: "not_funded",
+          mintsCompleted: 0,
+          status: "idle",
+          balance: "0",
+        })
+      }
+
+      setWallets(newWallets)
+      storage.saveWallets(newWallets as any)
+      toast.success(`Generated ${generatedCount} wallets`, {
         description: "Wallets saved for future use",
       })
     } catch (error) {
@@ -156,7 +171,14 @@ export default function Dashboard() {
     }
   }
 
-  const handleAutoFund = async (privateKey: string, amountPerWallet: string) => {
+  const sendCeloToWallets = async () => {
+    if (!signer) {
+      toast.error("Wallet not connected", {
+        description: "Connect MetaMask first",
+      })
+      return
+    }
+
     if (!wallets.length) {
       toast.error("No wallets to fund", {
         description: "Generate wallets first",
@@ -164,40 +186,72 @@ export default function Dashboard() {
       return
     }
 
-    if (!provider) {
-      toast.error("Provider not available", {
-        description: "Browser Web3 provider is required. Please connect your wallet.",
-      })
-      return
-    }
-
     setIsFunding(true)
-    setFundingProgress(0)
+
+    const fundingToastId = toast.loading("Funding wallets...", {
+      description: `Sending ${gasAmount} CELO to ${wallets.length} wallets`,
+    })
 
     try {
-      const updatedWallets = await autoFundWallets(wallets, privateKey, amountPerWallet, provider, (progress) => {
-        setFundingProgress(progress)
+      const amountWei = ethers.parseEther(gasAmount)
+      const totalAmount = amountWei * BigInt(wallets.length)
+
+      const balance = await provider!.getBalance(connectedAddress)
+      if (balance < totalAmount) {
+        toast.dismiss(fundingToastId)
+        toast.error("Insufficient balance", {
+          description: `Need ${ethers.formatEther(totalAmount)} CELO but have ${ethers.formatEther(balance)}`,
+        })
+        setIsFunding(false)
+        return
+      }
+
+      console.log(`Starting batch funding of ${wallets.length} wallets with ${gasAmount} CELO each`)
+
+      let successCount = 0
+      const updatedWallets = [...wallets] // Create a mutable copy
+
+      for (let i = 0; i < wallets.length; i++) {
+        try {
+          const tx = await signer.sendTransaction({
+            to: wallets[i].address,
+            value: amountWei,
+          })
+
+          const receipt = await tx.wait()
+          if (receipt?.status === 1) {
+            successCount++
+            updatedWallets[i].funded = true // This might be redundant if fundingStatus is used
+            updatedWallets[i].fundingStatus = "funded"
+            updatedWallets[i].status = "idle" // Reset status after funding
+            updatedWallets[i].balance = gasAmount // Update balance, though this might be better fetched
+          }
+        } catch (err) {
+          console.error(`Error funding wallet ${i + 1}:`, err)
+          // Optionally mark this wallet as failed to fund
+          updatedWallets[i].fundingStatus = "funding_failed"
+        }
+      }
+
+      setWallets(updatedWallets) // Update state once
+      storage.saveWallets(updatedWallets as any)
+
+      toast.dismiss(fundingToastId)
+      toast.success("Funding complete!", {
+        description: `Successfully funded ${successCount}/${wallets.length} wallets with ${gasAmount} CELO each`,
       })
 
-      setWallets(updatedWallets)
-      storage.saveWallets(updatedWallets)
-      toast.success("Funding complete!", {
-        description: `Successfully funded ${updatedWallets.filter((w) => w.status === "funded").length}/${wallets.length} wallets.`,
-      })
-      setFundingProgress(0)
+      if (selectedBatchId) {
+        // This function needs to be implemented if batch updates are required after funding
+        // await updateBatchAfterFunding(selectedBatchId, String(successCount * Number(gasAmount)));
+      }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Unknown error"
+      toast.dismiss(fundingToastId)
       toast.error("Funding failed", {
         description: errorMsg,
       })
       console.error("Error in batch funding:", error)
-      setWallets((prevWallets) =>
-        prevWallets.map((w) => ({
-          ...w,
-          status: w.status === "funding" ? "not_funded" : w.status,
-          fundingStatus: w.status === "funding" ? "funding_failed" : w.fundingStatus,
-        })),
-      )
     } finally {
       setIsFunding(false)
     }
@@ -211,16 +265,16 @@ export default function Dashboard() {
       return
     }
 
-    if (wallets.length === 0) {
-      toast.error("No wallets generated", {
-        description: "Generate wallets first before minting",
+    if (!signer) {
+      toast.error("Wallet not connected", {
+        description: "Please connect your wallet first",
       })
       return
     }
 
-    if (!provider) {
-      toast.error("Provider unavailable", {
-        description: "Web3 provider is required. Please ensure MetaMask is available.",
+    if (wallets.length === 0) {
+      toast.error("No wallets generated", {
+        description: "Generate wallets first before minting",
       })
       return
     }
@@ -232,32 +286,38 @@ export default function Dashboard() {
     const mintingToastId = toast.loading("Minting started...", {
       description: `Minting NFTs with ${wallets.length} wallets`,
     })
+    console.log("[v0] Starting minting process with all wallets...")
 
     let successCount = 0
     let failureCount = 0
 
     for (let i = 0; i < wallets.length; i++) {
       if (controller.signal.aborted) {
+        console.log("[v0] Minting stopped by user")
         break
       }
 
       const wallet = wallets[i]
 
       try {
+        console.log(`[v0] Minting with wallet ${i + 1}: ${wallet.address}`)
+
         const walletInstance = new ethers.Wallet(wallet.privateKey, provider)
 
         const ipfsUri = `data:application/json;base64,${btoa(
           JSON.stringify({
-            name: `Credential #${i + 1}`,
-            description: "Minted credential NFT",
+            name: `Celo Credential #${i + 1}`,
+            description: "Verifiable credential NFT on Celo",
             image: "https://via.placeholder.com/256",
             attributes: [{ trait_type: "Index", value: `${i + 1}` }],
           }),
         )}`
 
+        console.log(`[v0] Generated tokenURI for wallet ${i + 1}`)
+
         const result = await mintCredential(walletInstance, wallet.address, ipfsUri, contractAddress)
 
-        if (result && result.transactionHash) {
+        if (result) {
           addTransaction({
             hash: result.transactionHash,
             timestamp: Date.now(),
@@ -273,6 +333,8 @@ export default function Dashboard() {
           setWallets(updatedWallets)
           storage.saveWallets(updatedWallets as any)
 
+          console.log(`[v0] Mint successful for wallet ${i + 1}, tokenId: ${result.tokenId}`)
+
           toast.success(`NFT Minted #${i + 1}`, {
             description: `Tx: ${result.transactionHash.slice(0, 10)}...`,
           })
@@ -284,12 +346,14 @@ export default function Dashboard() {
             wallet: wallet.address,
           })
           failureCount++
+          console.log(`[v0] Mint failed for wallet ${i + 1}`)
 
           toast.error(`Mint failed #${i + 1}`, {
             description: "Transaction reverted on chain",
           })
         }
       } catch (error) {
+        console.error(`[v0] Error minting with wallet ${i + 1}:`, error)
         addTransaction({
           hash: "error",
           timestamp: Date.now(),
@@ -313,7 +377,7 @@ export default function Dashboard() {
     })
   }
 
-  const addTransaction = (tx: MintTransaction) => {
+  const addTransaction = (tx: Transaction) => {
     setTransactions((prev) => [tx, ...prev])
   }
 
@@ -321,337 +385,336 @@ export default function Dashboard() {
     if (mintAbortController) {
       mintAbortController.abort()
       setMintAbortController(null)
-      toast.info("Minting stopped", {
-        description: "Stopped by user",
+    }
+    setIsMinting(false)
+    toast.info("Minting stopped", {
+      description: "Stopped by user",
+    })
+  }
+
+  const copyToClipboard = (text: string, label = "Address") => {
+    navigator.clipboard.writeText(text)
+    toast.success("Copied to clipboard", {
+      description: `${label} copied`,
+    })
+  }
+
+  const exportWalletsAsCSV = () => {
+    if (wallets.length === 0) {
+      toast.error("No wallets to export", {
+        description: "Generate wallets first",
+      })
+      return
+    }
+
+    const csv = storage.exportWalletsAsCSV()
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const link = document.createElement("a")
+    const url = URL.createObjectURL(blob)
+
+    link.setAttribute("href", url)
+    link.setAttribute("download", `celo-wallets-${Date.now()}.csv`)
+    link.style.visibility = "hidden"
+
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+
+    toast.success("CSV exported", {
+      description: `Downloaded ${wallets.length} wallets`,
+    })
+  }
+
+  const clearAllWallets = () => {
+    toast.warning("Clear all wallets?", {
+      description: "This will delete all saved wallets permanently.",
+      action: {
+        label: "Delete",
+        onClick: () => {
+          setWallets([])
+          storage.clearWallets()
+          toast.success("Wallets cleared", {
+            description: "All wallets have been deleted",
+          })
+        },
+      },
+    })
+  }
+
+  const loadBatchFromDB = async (batchId: string) => {
+    try {
+      const response = await fetch(`/api/batch/${batchId}`)
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      const batch = await response.json()
+
+      const walletDataArray = Array.isArray(batch.walletData) ? batch.walletData : []
+
+      const loadedWallets: MintWallet[] = walletDataArray.map((w: any) => ({
+        ...w,
+        funded: false, // Default to false, will be updated by funding
+        fundingStatus: "not_funded",
+        mintsCompleted: 0,
+        status: "idle",
+        balance: "0",
+      }))
+
+      setWallets(loadedWallets)
+      storage.saveWallets(loadedWallets as any)
+      setSelectedBatchId(batchId)
+
+      toast.success("Batch loaded", {
+        description: `Loaded ${loadedWallets.length} wallets from batch`,
+      })
+    } catch (error) {
+      console.error("[v0] Error loading batch:", error)
+      toast.error("Failed to load batch", {
+        description: error instanceof Error ? error.message : "Could not load wallets from database",
       })
     }
   }
 
-  const handleContractAddressChange = (value: string) => {
-    setContractAddress(value)
-  } // Declaring handleContractAddressChange
-
-  const AutoFundingSection = ({
-    onFund,
-    isFunding,
-    fundingProgress,
-  }: {
-    onFund: (privateKey: string, amountPerWallet: string) => void
-    isFunding: boolean
-    fundingProgress: number
-  }) => {
-    const [privateKey, setPrivateKey] = useState("")
-    const [amountPerWallet, setAmountPerWallet] = useState("0.1")
-
-    const handleSubmit = () => {
-      if (!privateKey) {
-        toast.error("Private key required", { description: "Please enter your private key to fund wallets." })
-        return
-      }
-      onFund(privateKey, amountPerWallet)
+  const saveBatchToDB = async () => {
+    if (!wallets.length) {
+      toast.error("No wallets to save", {
+        description: "Generate wallets first",
+      })
+      return
     }
 
-    return (
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">Your Private Key</label>
-          <Input
-            type="password"
-            placeholder="0x..."
-            value={privateKey}
-            onChange={(e) => setPrivateKey(e.target.value)}
-            disabled={isFunding}
-            className="bg-slate-700 border-slate-600 text-white"
-          />
-          <p className="text-xs text-slate-400 mt-1">
-            Your private key is only used to sign transactions and is never stored.
-          </p>
-        </div>
+    setIsSavingBatch(true)
+    try {
+      const batch = await saveBatchAction(
+        batchName,
+        wallets.map((w) => ({
+          address: w.address,
+          privateKey: w.privateKey,
+        })),
+        `Generated ${wallets.length} wallets`,
+      )
 
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">Amount per Wallet (CELO)</label>
-          <Input
-            type="number"
-            placeholder="0.1"
-            value={amountPerWallet}
-            onChange={(e) => setAmountPerWallet(e.target.value)}
-            disabled={isFunding}
-            className="bg-slate-700 border-slate-600 text-white"
-          />
-        </div>
-
-        {isFunding && (
-          <div className="space-y-2">
-            <Progress value={fundingProgress} className="w-full" />
-            <p className="text-sm text-slate-400">{Math.round(fundingProgress)}% complete</p>
-          </div>
-        )}
-
-        <Button
-          onClick={handleSubmit}
-          disabled={isFunding || !privateKey}
-          className="w-full bg-green-600 hover:bg-green-700"
-        >
-          {isFunding ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Funding...
-            </>
-          ) : (
-            "Auto-Fund Wallets"
-          )}
-        </Button>
-      </div>
-    )
+      if (batch) {
+        setBatches([...batches, batch])
+        setSelectedBatchId(batch.id)
+        toast.success("Batch saved successfully", {
+          description: `Batch ${batch.name} saved to database`,
+        })
+        setBatchName(`Batch ${Date.now()}`)
+      }
+    } catch (error) {
+      toast.error("Failed to save batch", {
+        description: "Could not save batch to database",
+      })
+      console.error("Error saving batch:", error)
+    } finally {
+      setIsSavingBatch(false)
+    }
   }
 
-  const fundedWalletCount = wallets.filter((w) => w.status === "funded").length
+  const handleContractAddressChange = (address: string) => {
+    setContractAddress(address)
+    storage.saveContractAddress(address)
+  }
+
+  const handleUpdateWallets = (updatedWallets: MintWallet[]) => {
+    setWallets(updatedWallets)
+    storage.saveWallets(updatedWallets as any)
+  }
+
+  const fundedWalletCount = wallets.filter((w) => w.fundingStatus === "funded").length
   const totalMints = wallets.reduce((sum, w) => sum + (w.mintsCompleted || 0), 0)
 
-  const fundedCount = wallets.filter((w) => w.status === "funded").length
-  const notFundedCount = wallets.filter((w) => w.status === "not_funded").length
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      <div className="container mx-auto p-6">
+    <div className="min-h-screen bg-background p-4 md:p-8">
+      <div className="max-w-7xl mx-auto space-y-8">
+        {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-white">Mintition</h1>
-            {userEmail && <p className="text-muted-foreground">{userEmail}</p>}
+            <h1 className="text-3xl font-bold">Mintition</h1>
+            <p className="text-muted-foreground">{userEmail}</p>
           </div>
-          <Button onClick={handleLogout} variant="outline" className="gap-2 bg-transparent">
-            <LogOut className="w-4 h-4" />
+          <Button onClick={handleLogout} variant="outline">
+            <LogOut className="w-4 h-4 mr-2" />
             Logout
           </Button>
         </div>
 
         <Tabs defaultValue="wallets" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-8 bg-slate-800">
-            <TabsTrigger value="wallets" className="flex items-center gap-2">
-              <WalletIcon className="w-4 h-4" />
-              Wallets
-            </TabsTrigger>
-            <TabsTrigger value="funding" className="flex items-center gap-2">
-              <Zap className="w-4 h-4" />
-              Auto-Funding
-            </TabsTrigger>
-            <TabsTrigger value="minting" className="flex items-center gap-2">
-              <Coins className="w-4 h-4" />
-              Minting
-            </TabsTrigger>
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="wallets">Wallets</TabsTrigger>
+            <TabsTrigger value="funding">Auto-Funding</TabsTrigger>
+            <TabsTrigger value="mint">Minting</TabsTrigger>
           </TabsList>
 
           <TabsContent value="wallets" className="space-y-6">
-            <Card className="border-slate-700 bg-slate-800">
+            <Card className="glass">
               <CardHeader>
                 <CardTitle>Generate Wallets</CardTitle>
-                <CardDescription>Create new wallets for minting NFTs</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    onClick={() => handleGenerateWallets(10)}
-                    className="bg-blue-600 hover:bg-blue-700"
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Number of Wallets</label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={generatedCount}
+                    onChange={(e) => setGeneratedCount(Math.min(100, Math.max(1, Number(e.target.value))))}
                     disabled={isGenerating}
-                  >
-                    Generate 10
-                  </Button>
-                  <Button
-                    onClick={() => handleGenerateWallets(50)}
-                    className="bg-blue-600 hover:bg-blue-700"
-                    disabled={isGenerating}
-                  >
-                    Generate 50
-                  </Button>
-                  <Button
-                    onClick={() => handleGenerateWallets(100)}
-                    className="bg-blue-600 hover:bg-blue-700"
-                    disabled={isGenerating}
-                  >
-                    Generate 100
-                  </Button>
-                  <Button
-                    onClick={() => handleGenerateWallets(500)}
-                    className="bg-blue-600 hover:bg-blue-700"
-                    disabled={isGenerating}
-                  >
-                    Generate 500
-                  </Button>
+                  />
                 </div>
+                <Button onClick={generateWallets} disabled={isGenerating} className="w-full">
+                  {isGenerating ? "Generating..." : `Generate ${generatedCount} Wallets`}
+                </Button>
               </CardContent>
             </Card>
 
-            {wallets.length > 0 && (
-              <Card className="border-slate-700 bg-slate-800">
-                <CardHeader>
-                  <CardTitle>Wallet Summary</CardTitle>
-                  <CardDescription>Total wallets: {wallets.length}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="p-4 bg-slate-700 rounded-lg">
-                      <p className="text-sm text-slate-400">Total Wallets</p>
-                      <p className="text-2xl font-bold text-white">{wallets.length}</p>
-                    </div>
-                    <div className="p-4 bg-green-900 rounded-lg">
-                      <p className="text-sm text-green-200">Funded</p>
-                      <p className="text-2xl font-bold text-green-400">{fundedCount}</p>
-                    </div>
-                    <div className="p-4 bg-red-900 rounded-lg">
-                      <p className="text-sm text-red-200">Not Funded</p>
-                      <p className="text-2xl font-bold text-red-400">{notFundedCount}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {wallets.length > 0 && (
-              <Card className="border-slate-700 bg-slate-800">
-                <CardHeader>
-                  <CardTitle>Generated Wallets</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {wallets.map((wallet, index) => (
-                      <div key={index} className="flex items-center justify-between p-2 bg-slate-700 rounded">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-mono text-slate-300">
-                            {wallet.address.slice(0, 10)}...{wallet.address.slice(-8)}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2 ml-2">
-                          {wallet.status === "funded" ? (
-                            <span className="text-green-400 text-sm">✓ Funded</span>
-                          ) : (
-                            <span className="text-red-400 text-sm">✗ Not Funded</span>
-                          )}
-                          {wallet.mintsCompleted && wallet.mintsCompleted > 0 ? (
-                            <span className="text-blue-400 text-sm">{wallet.mintsCompleted} mints</span>
-                          ) : null}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+            {wallets.length > 0 && <WalletManagement wallets={wallets} onWalletsUpdate={handleUpdateWallets} />}
           </TabsContent>
 
           <TabsContent value="funding" className="space-y-6">
-            <Card className="border-slate-700 bg-slate-800">
-              <CardHeader>
-                <CardTitle>Auto-Fund Wallets</CardTitle>
-                <CardDescription>Use your private key to automatically fund all wallets</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <AutoFundingSection onFund={handleAutoFund} isFunding={isFunding} fundingProgress={fundingProgress} />
-              </CardContent>
-            </Card>
+            {wallets.length > 0 && <AutoFundingSection wallets={wallets} onWalletsUpdate={handleUpdateWallets} />}
+            {wallets.length === 0 && (
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>Generate wallets first before auto-funding</AlertDescription>
+              </Alert>
+            )}
           </TabsContent>
 
-          <TabsContent value="minting" className="space-y-6">
-            <Card className="border-slate-700 bg-slate-800">
+          <TabsContent value="mint" className="space-y-6">
+            <Card className="glass border-purple-500/20">
               <CardHeader>
                 <CardTitle>Smart Contract Configuration</CardTitle>
-                <CardDescription>Enter your NFT contract address</CardDescription>
+                <CardDescription>Enter your NFT contract addresses</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">Smart Contract Address</label>
-                  <Input
-                    placeholder="0x..."
-                    value={contractAddress}
-                    onChange={(e) => handleContractAddressChange(e.target.value)}
-                    className="bg-slate-700 border-slate-600 text-white"
-                  />
-                  <p className="text-xs text-slate-400 mt-2">Enter the contract address you want to mint from</p>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Contract Address</label>
+                  <div className="flex flex-col gap-2">
+                    <Input
+                      placeholder="0x97161a87229d3A8E0Bd2Fbcd408eE6c9f65823ae"
+                      value={contractAddress}
+                      onChange={(e) => handleContractAddressChange(e.target.value)}
+                      className="font-mono text-sm"
+                    />
+                    <div className="text-xs text-muted-foreground p-2 bg-secondary/50 rounded">
+                      Enter any contract address - no verification needed
+                    </div>
+                  </div>
+                </div>
+
+                <Alert className="border-blue-500/50 bg-blue-500/10">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>You can update the contract address at any time before minting</AlertDescription>
+                </Alert>
+              </CardContent>
+            </Card>
+
+            {/* Mint Section */}
+            <Card className="glass">
+              <CardHeader>
+                <CardTitle>Mint NFTs</CardTitle>
+                <CardDescription>Mint NFTs to all wallets</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2 p-3 rounded bg-secondary/50 border border-border/50">
+                  <p className="text-sm font-medium">Status:</p>
+                  <p className="text-sm">
+                    <span className="font-semibold">{wallets.length}</span> wallets total
+                  </p>
+                  <p className="text-sm">
+                    <span className="font-semibold">{fundedWalletCount}</span> funded wallets
+                  </p>
+                  <p className="text-sm">
+                    Contract:{" "}
+                    <span className="font-mono text-xs">
+                      {contractAddress ? `${contractAddress.slice(0, 10)}...${contractAddress.slice(-8)}` : "Not set"}
+                    </span>
+                  </p>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleMint}
+                    disabled={isMinting || wallets.length === 0 || !contractAddress}
+                    className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                  >
+                    {isMinting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Minting...
+                      </>
+                    ) : (
+                      "Start Minting All Wallets"
+                    )}
+                  </Button>
+                  {isMinting && (
+                    <Button onClick={stopMinting} variant="destructive" className="gap-2">
+                      <X className="w-4 h-4" />
+                      Stop
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
-
-            {wallets.length > 0 && (
-              <Card className="border-slate-700 bg-slate-800">
-                <CardHeader>
-                  <CardTitle>Start Minting</CardTitle>
-                  <CardDescription>Mint NFTs across all generated wallets</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="p-4 bg-slate-700 rounded-lg">
-                    <p className="text-sm text-slate-300 mb-2">
-                      Wallets to Mint: <span className="font-bold text-white">{wallets.length}</span>
-                    </p>
-                    <p className="text-sm text-slate-300">
-                      Contract:{" "}
-                      <span className="font-mono text-xs">
-                        {contractAddress ? `${contractAddress.slice(0, 10)}...${contractAddress.slice(-8)}` : "Not set"}
-                      </span>
-                    </p>
+            {/* Transaction history section - existing code ... */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Transaction History ({transactions.length})</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {transactions.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-muted-foreground text-sm">No transactions yet</p>
                   </div>
-
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={handleMint}
-                      disabled={isMinting || wallets.length === 0 || !contractAddress}
-                      className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
-                    >
-                      {isMinting ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Minting...
-                        </>
-                      ) : (
-                        "Start Minting All Wallets"
-                      )}
-                    </Button>
-                    {isMinting && (
-                      <Button onClick={stopMinting} variant="destructive" className="gap-2">
-                        <X className="w-4 h-4" />
-                        Stop
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {transactions.length > 0 && (
-              <Card className="border-slate-700 bg-slate-800">
-                <CardHeader>
-                  <CardTitle>Transaction History</CardTitle>
-                </CardHeader>
-                <CardContent>
+                ) : (
                   <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {transactions.map((tx, index) => (
-                      <div key={index} className="flex items-center justify-between p-2 bg-slate-700 rounded">
+                    {transactions.map((tx, i) => (
+                      <div
+                        key={i}
+                        className="p-3 sm:p-4 rounded bg-secondary/50 border border-border/50 flex items-start gap-3 hover:bg-secondary/75 transition-colors"
+                      >
+                        <div className="mt-1 flex-shrink-0">
+                          {tx.status === "success" && <CheckCircle className="w-5 h-5 text-green-500" />}
+                          {tx.status === "pending" && <Clock className="w-5 h-5 text-yellow-500 animate-spin" />}
+                          {tx.status === "failed" && <AlertCircle className="w-5 h-5 text-red-500" />}
+                        </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-mono text-slate-300">
-                            {tx.hash.slice(0, 10)}...{tx.hash.slice(-8)}
+                          <p className="text-xs sm:text-sm font-mono break-all text-foreground">{tx.hash}</p>
+                          <div className="flex flex-wrap gap-2 mt-1 text-xs">
+                            <span className="text-muted-foreground">{new Date(tx.timestamp).toLocaleTimeString()}</span>
+                            <span
+                              className={
+                                tx.status === "success"
+                                  ? "text-green-400"
+                                  : tx.status === "pending"
+                                    ? "text-yellow-400"
+                                    : "text-red-400"
+                              }
+                            >
+                              {tx.status.toUpperCase()}
+                            </span>
+                          </div>
+                          <p className="text-xs font-mono text-muted-foreground mt-1 break-all">
+                            {tx.wallet.slice(0, 10)}...{tx.wallet.slice(-8)}
                           </p>
                         </div>
-                        <span
-                          className={
-                            tx.status === "success"
-                              ? "text-green-400 text-sm"
-                              : tx.status === "pending"
-                                ? "text-yellow-400 text-sm"
-                                : "text-red-400 text-sm"
-                          }
-                        >
-                          {tx.status.toUpperCase()}
-                        </span>
                       </div>
                     ))}
                   </div>
-                </CardContent>
-              </Card>
-            )}
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
 
+        {/* Batch Management Section - Kept for now, could be refactored */}
         <section className="space-y-4 mt-8">
-          <h2 className="text-2xl font-bold text-white">Wallet Batches</h2>
+          <h2 className="text-2xl font-bold">Wallet Batches</h2>
 
+          {/* Load Existing Batch */}
           {batches.length > 0 && (
             <Card className="glass">
               <CardHeader>
@@ -670,7 +733,7 @@ export default function Dashboard() {
                       }`}
                       onClick={() => loadBatchFromDB(batch.id)}
                     >
-                      <h3 className="font-semibold text-white">{batch.name}</h3>
+                      <h3 className="font-semibold">{batch.name}</h3>
                       <p className="text-sm text-muted-foreground">{batch.walletCount} wallets</p>
                       <p className="text-xs text-muted-foreground mt-2">
                         {new Date(batch.createdAt).toLocaleDateString()}
@@ -682,6 +745,7 @@ export default function Dashboard() {
             </Card>
           )}
 
+          {/* Save Batch */}
           {wallets.length > 0 && !selectedBatchId && (
             <Card className="glass">
               <CardHeader>
@@ -689,16 +753,16 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-white">Batch Name</label>
+                  <label className="text-sm font-medium">Batch Name</label>
                   <input
                     type="text"
                     value={batchName}
                     onChange={(e) => setBatchName(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg bg-background text-white border-slate-600"
+                    className="w-full px-3 py-2 border rounded-lg bg-background"
                     placeholder="e.g., Marketing Campaign Batch 1"
                   />
                 </div>
-                <Button onClick={() => saveBatchToDB(wallets, batchName)} disabled={isSavingBatch} className="w-full">
+                <Button onClick={saveBatchToDB} disabled={isSavingBatch} className="w-full">
                   {isSavingBatch ? "Saving..." : "Save Batch"}
                 </Button>
               </CardContent>

@@ -1,6 +1,7 @@
 import type React from "react"
 import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
+import { Analytics } from "@vercel/analytics/next"
 import { Toaster } from "sonner"
 import "./globals.css"
 
@@ -11,6 +12,7 @@ export const metadata: Metadata = {
   title: "Mintition - NFT Bulk Minting Dashboard",
   description:
     "Automated NFT minting platform for Celo blockchain with bulk wallet generation and credential management",
+  generator: "v0.app",
   icons: {
     icon: [
       {
@@ -28,7 +30,6 @@ export const metadata: Metadata = {
     ],
     apple: "/apple-icon.png",
   },
-    generator: 'v0.app'
 }
 
 export default function RootLayout({
@@ -41,6 +42,7 @@ export default function RootLayout({
       <body className={`font-sans antialiased`}>
         {children}
         <Toaster position="top-right" richColors />
+        <Analytics />
       </body>
     </html>
   )
