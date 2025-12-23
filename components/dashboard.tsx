@@ -1,7 +1,7 @@
-"use client"
+" "
 
-import { useState, useEffect } from "react"
-import { createClient } from "@/lib/supabase/client"
+ { , useEffect } from "react"
+ { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -28,17 +28,13 @@ export default function Dashboard() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [isMinting, setIsMinting] = useState(false)
   const [isFunding, setIsFunding] = useState(false)
-  const [isGenerating, setIsGenerating] = useState(false)
+  const [isGenerating, ] = useState(false)
   const [mintAbortController, setMintAbortController] = useState<AbortController | null>(null)
   const [connectedAddress, setConnectedAddress] = useState<string>("")
   const [provider, setProvider] = useState<ethers.BrowserProvider | null>(null)
   const [signer, setSigner] = useState<ethers.Signer | null>(null)
   const [batches, setBatches] = useState<any[]>([])
-  const [selectedBatchId, setSelectedBatchId] = useState<string>("")
-  const [batchName, setBatchName] = useState(`Batch ${Date.now()}`)
-  const [isSavingBatch, setIsSavingBatch] = useState(false)
-  const [userEmail, setUserEmail] = useState<string>("")
-
+  const [selectedBatchId, setSelectedBatchId] = useState<st
   const { mintCredential, getBalance } = useWeb3Contract()
   const router = useRouter()
 
@@ -534,26 +530,10 @@ export default function Dashboard() {
             <h1 className="text-3xl font-bold">Mintition</h1>
             <p className="text-muted-foreground">{userEmail}</p>
           </div>
-          <div className="flex items-center gap-2">
-            {connectedAddress ? (
-              <div className="flex items-center gap-2">
-                <div className="text-sm text-muted-foreground">
-                  Connected: {connectedAddress.slice(0, 6)}...{connectedAddress.slice(-4)}
-                </div>
-                <Button variant="success" disabled>
-                  ✓ Connected
-                </Button>
-              </div>
-            ) : (
-              <Button onClick={connectWallet} className="bg-primary hover:bg-primary/90">
-                Connect Wallet
-              </Button>
-            )}
-            <Button onClick={handleLogout} variant="outline">
-              <LogOut className="w-4 h-4 mr-2" />
-              Logout
-            </Button>
-          </div>
+          <Button onClick={handleLogout} variant="outline">
+            <LogOut className="w-4 h-4 mr-2" />
+            Logout
+          </Button>
         </div>
 
         <Tabs defaultValue="wallets" className="w-full">
@@ -769,23 +749,9 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Batch Name</label>
-                  <input
+                  <label className="text-s
                     type="text"
                     value={batchName}
                     onChange={(e) => setBatchName(e.target.value)}
                     className="w-full px-3 py-2 border rounded-lg bg-background"
-                    placeholder="e.g., Marketing Campaign Batch 1"
-                  />
-                </div>
-                <Button onClick={saveBatchToDB} disabled={isSavingBatch} className="w-full">
-                  {isSavingBatch ? "Saving..." : "Save Batch"}
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-        </section>
-      </div>
-    </div>
-  )
-}
+                    placeholder="
