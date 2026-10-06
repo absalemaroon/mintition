@@ -51,7 +51,6 @@ export function AutoFundingSection({ wallets, onWalletsUpdate }: AutoFundingSect
     })
 
     try {
-      // Mark wallets as funding
       const updatingWallets = wallets.map((w) => ({
         ...w,
         fundingStatus: "funding" as const,
@@ -62,7 +61,6 @@ export function AutoFundingSection({ wallets, onWalletsUpdate }: AutoFundingSect
         setProgress({ current: progressData.current, total: progressData.total })
       })
 
-      // Update wallet funding status based on results
       const fundedWallets = wallets.map((wallet) => {
         const result = results.find((r) => r.wallet.address === wallet.address)
         return {
@@ -81,7 +79,6 @@ export function AutoFundingSection({ wallets, onWalletsUpdate }: AutoFundingSect
         description: `Successfully funded ${successCount}/${wallets.length} wallets`,
       })
 
-      // Clear private key after successful funding
       setPrivateKey("")
     } catch (error) {
       toast.dismiss(fundingToastId)
@@ -91,7 +88,6 @@ export function AutoFundingSection({ wallets, onWalletsUpdate }: AutoFundingSect
       })
       console.error("Auto-funding error:", error)
 
-      // Mark wallets back to not funded
       const revertedWallets = wallets.map((w) => ({
         ...w,
         fundingStatus: "not_funded" as const,
@@ -104,19 +100,19 @@ export function AutoFundingSection({ wallets, onWalletsUpdate }: AutoFundingSect
   }
 
   return (
-    <Card className="glass">
+    <Card className="paper-card">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Lock className="w-5 h-5" />
+          <Lock className="w-5 h-5 text-accent" />
           Automated Wallet Funding
         </CardTitle>
         <CardDescription>Use your private key to automatically fund all wallets</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Alert className="border-amber-500/30 bg-amber-500/10">
-          <AlertCircle className="h-4 w-4 text-amber-600" />
-          <AlertDescription className="text-amber-700">
-            Your private key is never stored or sent to any server. It's used only locally to sign transactions.
+        <Alert className="border-accent/30 bg-accent/5">
+          <AlertCircle className="h-4 w-4 text-accent" />
+          <AlertDescription className="text-foreground/70">
+            Your private key is never stored or sent to any server. It&apos;s used only locally to sign transactions.
           </AlertDescription>
         </Alert>
 
@@ -130,11 +126,11 @@ export function AutoFundingSection({ wallets, onWalletsUpdate }: AutoFundingSect
               value={privateKey}
               onChange={(e) => setPrivateKey(e.target.value)}
               disabled={isLoading}
-              className="pr-10"
+              className="pr-16 font-mono"
             />
             <button
               onClick={() => setShowPrivateKey(!showPrivateKey)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
               disabled={isLoading}
             >
               {showPrivateKey ? "Hide" : "Show"}
@@ -164,9 +160,9 @@ export function AutoFundingSection({ wallets, onWalletsUpdate }: AutoFundingSect
                 {progress.current}/{progress.total}
               </span>
             </div>
-            <div className="w-full bg-secondary rounded-full h-2">
+            <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
               <div
-                className="bg-primary h-2 rounded-full transition-all"
+                className="bg-accent h-2 rounded-full transition-all"
                 style={{ width: `${(progress.current / progress.total) * 100}%` }}
               />
             </div>
@@ -176,7 +172,7 @@ export function AutoFundingSection({ wallets, onWalletsUpdate }: AutoFundingSect
         <Button
           onClick={handleAutoFund}
           disabled={isLoading || !privateKey.trim() || wallets.length === 0}
-          className="w-full"
+          className="w-full ink-btn-terracotta"
         >
           <Send className="w-4 h-4 mr-2" />
           {isLoading ? "Funding in Progress..." : `Auto-Fund ${wallets.length} Wallets`}

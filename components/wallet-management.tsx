@@ -41,11 +41,11 @@ export function WalletManagement({ wallets, onWalletsUpdate, isGenerating }: Wal
   const getStatusIcon = (fundingStatus: string) => {
     switch (fundingStatus) {
       case "funded":
-        return <Check className="w-4 h-4 text-green-500" />
+        return <Check className="w-4 h-4 text-accent" />
       case "not_funded":
-        return <X className="w-4 h-4 text-red-500" />
+        return <X className="w-4 h-4 text-destructive" />
       case "funding":
-        return <Clock className="w-4 h-4 text-yellow-500" />
+        return <Clock className="w-4 h-4 text-teal" />
       default:
         return null
     }
@@ -54,47 +54,47 @@ export function WalletManagement({ wallets, onWalletsUpdate, isGenerating }: Wal
   const getStatusBadgeColor = (status: string) => {
     const colors: Record<string, string> = {
       idle: "bg-muted text-muted-foreground",
-      funding: "bg-blue-500/20 text-blue-300",
-      scheduled: "bg-yellow-500/20 text-yellow-300",
-      minting: "bg-purple-500/20 text-purple-300",
-      completed: "bg-green-500/20 text-green-400 border border-green-500/30",
-      minted: "bg-green-500/20 text-green-400 border border-green-500/30",
-      failed: "bg-red-500/20 text-red-400 border border-red-500/30",
-      error: "bg-red-500/20 text-red-400 border border-red-500/30",
+      funding: "bg-teal/15 text-teal",
+      scheduled: "bg-accent/15 text-accent",
+      minting: "bg-accent/15 text-accent",
+      completed: "bg-accent/15 text-accent border border-accent/30",
+      minted: "bg-accent/15 text-accent border border-accent/30",
+      failed: "bg-destructive/15 text-destructive border border-destructive/30",
+      error: "bg-destructive/15 text-destructive border border-destructive/30",
     }
     return colors[status] || colors.idle
   }
 
   return (
-    <Card className="glass">
+    <Card className="paper-card">
       <CardHeader>
         <CardTitle>Wallet Management</CardTitle>
         <CardDescription>Monitor and manage your minting wallets</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Stats Row */}
-        <div className="grid grid-cols-4 gap-4">
-          <div className="bg-secondary/30 p-3 rounded-lg">
+        {/* Stats grid — responsive */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="bg-secondary/30 p-3 rounded-md border border-border/30">
             <p className="text-xs text-muted-foreground">Total Wallets</p>
-            <p className="text-xl font-bold">{wallets.length}</p>
+            <p className="text-lg sm:text-xl font-bold">{wallets.length}</p>
           </div>
-          <div className="bg-secondary/30 p-3 rounded-lg">
-            <p className="text-xs text-muted-foreground">Funded Wallets</p>
-            <p className="text-xl font-bold">{fundedCount}</p>
+          <div className="bg-secondary/30 p-3 rounded-md border border-border/30">
+            <p className="text-xs text-muted-foreground">Funded</p>
+            <p className="text-lg sm:text-xl font-bold">{fundedCount}</p>
           </div>
-          <div className="bg-secondary/30 p-3 rounded-lg">
+          <div className="bg-secondary/30 p-3 rounded-md border border-border/30">
             <p className="text-xs text-muted-foreground">Total Mints</p>
-            <p className="text-xl font-bold">{totalMints}</p>
+            <p className="text-lg sm:text-xl font-bold">{totalMints}</p>
           </div>
-          <div className="bg-secondary/30 p-3 rounded-lg">
+          <div className="bg-secondary/30 p-3 rounded-md border border-border/30">
             <p className="text-xs text-muted-foreground">Total Balance</p>
-            <p className="text-xl font-bold">{totalBalance.toFixed(2)} CELO</p>
+            <p className="text-lg sm:text-xl font-bold">{totalBalance.toFixed(2)} <span className="text-xs font-normal text-muted-foreground">CELO</span></p>
           </div>
         </div>
 
-        {/* Wallets Table */}
+        {/* Wallets table — scrollable on mobile */}
         <div className="border border-border rounded-lg overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm whitespace-nowrap">
             <thead className="bg-secondary/50 border-b border-border">
               <tr>
                 <th className="px-4 py-3 text-left font-medium">Wallet Address</th>
@@ -121,24 +121,6 @@ export function WalletManagement({ wallets, onWalletsUpdate, isGenerating }: Wal
                       <span
                         className={`px-2 py-1 rounded-full text-xs font-medium inline-flex items-center gap-1 ${getStatusBadgeColor(wallet.status || "idle")}`}
                       >
-                        {(wallet.status === "completed" || wallet.status === "minted") && (
-                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                            <path
-                              fillRule="evenodd"
-                              d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        )}
-                        {(wallet.status === "failed" || wallet.status === "error") && (
-                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                            <path
-                              fillRule="evenodd"
-                              d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        )}
                         {wallet.status || "idle"}
                       </span>
                     </td>
@@ -182,8 +164,8 @@ export function WalletManagement({ wallets, onWalletsUpdate, isGenerating }: Wal
           </div>
         )}
 
-        {/* Action Buttons */}
-        <div className="flex gap-3 pt-4">
+        {/* Action buttons */}
+        <div className="flex gap-3 pt-2">
           <Button
             onClick={exportCSV}
             disabled={wallets.length === 0}
