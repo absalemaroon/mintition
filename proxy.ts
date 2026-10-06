@@ -3,12 +3,31 @@ import type { NextRequest } from "next/server"
 import { NextResponse } from "next/server"
 import { createServerClient } from "@supabase/ssr"
 
+function isValidSupabaseConfig() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  try {
+    if (!url) return false
+    const parsed = new URL(url)
+    return parsed.protocol === "http:" || parsed.protocol === "https:"
+  } catch {
+    return false
+  }
+}
+
 export async function proxy(request: NextRequest) {
   const requestUrl = new URL(request.url)
   const pathname = requestUrl.pathname
 
   // First, update the session
   const response = await updateSession(request)
+
+  // If Supabase isn't configured (dev mode without credentials), redirect to login for protected routes
+  if (!isValidSupabaseConfig()) {
+    if (pathname.startsWith("/auth/")) {
+      return response
+    }
+    return NextResponse.redirect(new URL("/auth/login", request.url))
+  }
 
   // Create a Supabase client to check user session
   const supabase = createServerClient(
