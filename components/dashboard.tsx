@@ -25,6 +25,15 @@ import {
   PanelRight,
   Activity,
   SlidersHorizontal,
+  Search,
+  Moon,
+  Bell,
+  Copy,
+  Plus,
+  ArrowUpRight,
+  Receipt,
+  Menu,
+  LockKeyhole,
 } from "lucide-react"
 import { ethers } from "ethers"
 import { toast } from "sonner"
@@ -558,6 +567,11 @@ export default function Dashboard() {
               <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Operations</p>
             </div>
           </div>
+          <div className="mt-6 flex items-center gap-2 rounded-xl border border-border/70 bg-background px-3 py-2.5">
+            <Search className="size-4 text-muted-foreground" />
+            <input aria-label="Search anything" placeholder="Search anything" className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground" />
+            <kbd className="hidden rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground sm:inline">⌘ K</kbd>
+          </div>
           <nav className="mt-7 space-y-1" aria-label="Main navigation">
             <p className="mb-3 px-3 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Menu</p>
             {([
@@ -577,9 +591,10 @@ export default function Dashboard() {
           <div className="mt-auto space-y-1 border-t border-border/70 pt-5">
             <div className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-muted-foreground"><Settings2 className="size-4" />Settings</div>
             <div className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-muted-foreground"><CircleHelp className="size-4" />Help center</div>
-            <div className="mt-5 rounded-xl bg-muted/70 p-3">
-              <p className="truncate text-xs font-medium">{userEmail || "Workspace member"}</p>
-              <p className="mt-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Admin account</p>
+            <div className="mt-5 flex items-center gap-3 rounded-xl border border-border/70 bg-background p-3">
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold">{(userEmail || "M").slice(0, 1).toUpperCase()}</div>
+              <div className="min-w-0 flex-1"><p className="truncate text-xs font-medium">{userEmail || "Workspace member"}</p><p className="mt-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Admin account</p></div>
+              <button type="button" onClick={handleLogout} aria-label="Log out" className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"><LogOut className="size-4" /></button>
             </div>
           </div>
         </aside>
@@ -603,27 +618,39 @@ export default function Dashboard() {
               </div>
               <div className="flex flex-wrap items-center gap-2">
             <span className="hidden rounded-full border border-border bg-muted/40 px-3 py-1.5 text-xs font-medium sm:inline-flex">Celo</span>
-            <span className="hidden size-8 items-center justify-center rounded-lg border border-border text-muted-foreground sm:inline-flex" aria-label="Notifications"><Activity className="size-4" /></span>
+            <button type="button" aria-label="Toggle theme" className="hidden size-8 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:inline-flex"><Moon className="size-4" /></button>
+            <button type="button" aria-label="Notifications" className="hidden size-8 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:inline-flex"><Bell className="size-4" /></button>
             {connectedAddress ? (
               <div className="flex items-center gap-2">
                 <div className="text-sm text-muted-foreground">
                   Connected: {connectedAddress.slice(0, 6)}...{connectedAddress.slice(-4)}
                 </div>
-                <Button variant="success" disabled>
-                  ✓ Connected
-                </Button>
+                  <Button variant="outline" disabled className="gap-2"><span className="size-2 rounded-full bg-emerald-500" />{connectedAddress.slice(0, 6)}...{connectedAddress.slice(-4)}</Button>
               </div>
             ) : (
               <Button onClick={connectWallet} className="bg-primary hover:bg-primary/90">
                 Connect Wallet
               </Button>
             )}
-            <Button onClick={handleLogout} variant="outline">
-              <LogOut className="w-4 h-4 mr-2" />
-              Logout
-            </Button>
           </div>
         </div>
+
+        <section className="grid grid-cols-2 gap-3 md:grid-cols-4" aria-label="Wallet overview">
+          {[
+            [WalletCards, "Total wallets", wallets.length, "Wallets generated"],
+            [CheckCircle, "Funded wallets", fundedWalletCount, "Ready to mint"],
+            [Sparkles, "Total mints", totalMints, "Across all wallets"],
+            [Fuel, "Total balance", `${wallets.reduce((sum, wallet) => sum + Number(wallet.balance || 0), 0).toFixed(2)} CELO`, "Available balance"],
+          ].map(([Icon, label, value, helper]) => {
+            const StatIcon = Icon as LucideIcon
+            return <Card key={label as string} className="border-border/70 bg-card shadow-[0_8px_24px_rgba(18,18,18,0.03)]"><CardContent className="p-4 md:p-5"><div className="mb-5 flex items-center justify-between"><span className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">{label as string}</span><StatIcon className="size-4 text-muted-foreground" /></div><p className="text-2xl font-semibold tracking-[-0.04em] md:text-3xl">{value as string | number}</p><p className="mt-1 text-xs text-muted-foreground">{helper as string}</p></CardContent></Card>
+          })}
+        </section>
+
+        <Card className="border-border/70 bg-card shadow-none">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0"><div><CardTitle className="text-base">Quick actions</CardTitle><CardDescription>Start a common wallet operation.</CardDescription></div><ArrowUpRight className="size-4 text-muted-foreground" /></CardHeader>
+          <CardContent className="grid gap-2 p-4 pt-0 sm:grid-cols-3"><Button variant="outline" className="justify-start gap-2" onClick={() => setActiveView("wallets")}><Plus className="size-4" />Generate wallets</Button><Button variant="outline" className="justify-start gap-2" onClick={() => setActiveView("funding")}><Fuel className="size-4" />Fund wallets</Button><Button variant="outline" className="justify-start gap-2" onClick={() => setActiveView("mint")}><Sparkles className="size-4" />Mint NFTs</Button></CardContent>
+        </Card>
 
         <Tabs value={activeView} onValueChange={setActiveView} className="w-full">
           <TabsList className="sr-only" aria-label="Workspace views">
@@ -633,14 +660,15 @@ export default function Dashboard() {
           </TabsList>
 
           <TabsContent value="wallets" className="space-y-6">
-            <Card className="border-border/70 bg-card shadow-none">
-              <CardHeader>
-                <CardTitle>Generate Wallets</CardTitle>
+            <Card className="border-border/70 bg-card shadow-[0_8px_24px_rgba(18,18,18,0.03)]">
+              <CardHeader><p className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">Wallets / New batch</p>
+                <CardTitle className="text-xl tracking-[-0.03em]">Generate wallets</CardTitle><CardDescription>Create a secure batch for your next campaign.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Number of Wallets</label>
+                  <label htmlFor="wallet-count" className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Number of wallets</label>
                   <Input
+                    id="wallet-count"
                     type="number"
                     min="1"
                     max="100"
@@ -669,7 +697,7 @@ export default function Dashboard() {
           </TabsContent>
 
           <TabsContent value="mint" className="space-y-6">
-            <Card className="glass border-purple-500/20">
+            <Card className="border-border/70 bg-card shadow-[0_8px_24px_rgba(18,18,18,0.03)]">
               <CardHeader>
                 <CardTitle>Smart Contract Configuration</CardTitle>
                 <CardDescription>Enter your NFT contract addresses</CardDescription>
@@ -797,7 +825,7 @@ export default function Dashboard() {
 
         {/* Batch Management Section - Kept for now, could be refactored */}
         <section className="space-y-4 mt-8">
-          <h2 className="text-2xl font-bold">Wallet Batches</h2>
+          <div><p className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">Workspace / Batches</p><h2 className="mt-1 text-2xl font-semibold tracking-[-0.04em]">Wallet batches</h2><p className="mt-1 text-sm text-muted-foreground">Save and reuse generated wallet groups.</p></div>
 
           {/* Load Existing Batch */}
           {batches.length > 0 && (
