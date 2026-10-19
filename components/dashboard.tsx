@@ -22,6 +22,9 @@ import {
   Layers3,
   Settings2,
   CircleHelp,
+  PanelRight,
+  Activity,
+  SlidersHorizontal,
 } from "lucide-react"
 import { ethers } from "ethers"
 import { toast } from "sonner"
@@ -32,6 +35,7 @@ import { saveBatchAction, getAllBatchesAction } from "@/app/actions"
 import { useRouter } from "next/navigation"
 import { WalletManagement } from "./wallet-management"
 import { AutoFundingSection } from "./auto-funding-section"
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 
 export default function Dashboard() {
   const [wallets, setWallets] = useState<MintWallet[]>([])
@@ -577,8 +581,10 @@ export default function Dashboard() {
           </div>
         </aside>
 
-        <main className="min-w-0 flex-1 p-5 md:p-8">
-          <div className="mx-auto max-w-6xl space-y-8">
+        <main className="min-w-0 flex-1">
+          <ResizablePanelGroup orientation="horizontal" className="min-h-[calc(100vh-2rem)]">
+            <ResizablePanel defaultSize={72} minSize={52} className="min-w-0 p-5 md:p-8">
+              <div className="mx-auto max-w-6xl space-y-8">
             {/* Header */}
             <div className="flex flex-col gap-5 border-b border-border/70 pb-7 sm:flex-row sm:items-end sm:justify-between">
               <div>
@@ -838,7 +844,30 @@ export default function Dashboard() {
             </Card>
           )}
         </section>
-          </div>
+              </div>
+            </ResizablePanel>
+            <ResizableHandle withHandle />
+            <ResizablePanel defaultSize={28} minSize={20} maxSize={40} className="hidden min-w-[260px] bg-muted/10 p-5 xl:block">
+              <aside className="sticky top-5 space-y-5" aria-label="Workbench inspector">
+                <div className="flex items-center justify-between border-b border-border/70 pb-4">
+                  <div className="flex items-center gap-2"><PanelRight className="size-4" /><p className="text-sm font-semibold">Inspector</p></div>
+                  <SlidersHorizontal className="size-4 text-muted-foreground" />
+                </div>
+                <Card className="border-border/70 bg-card shadow-none">
+                  <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-sm"><Activity className="size-4 text-muted-foreground" />Workspace activity</CardTitle></CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex items-end justify-between"><span className="text-xs text-muted-foreground">Generated wallets</span><span className="text-2xl font-semibold tracking-tight">{wallets.length}</span></div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-foreground transition-all" style={{ width: `${Math.min(100, wallets.length)}%` }} /></div>
+                    <div className="grid grid-cols-2 gap-3 border-t border-border/70 pt-4"><div><p className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Funded</p><p className="mt-1 text-lg font-medium">{fundedWalletCount}</p></div><div><p className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Mints</p><p className="mt-1 text-lg font-medium">{totalMints}</p></div></div>
+                  </CardContent>
+                </Card>
+                <Card className="border-border/70 bg-card shadow-none">
+                  <CardHeader className="pb-3"><CardTitle className="text-sm">Workbench layout</CardTitle><CardDescription>Drag the divider to resize this inspector.</CardDescription></CardHeader>
+                  <CardContent><p className="text-xs leading-5 text-muted-foreground">Keep your wallet data in focus while monitoring operational context alongside it.</p></CardContent>
+                </Card>
+              </aside>
+            </ResizablePanel>
+          </ResizablePanelGroup>
         </main>
       </div>
     </div>
