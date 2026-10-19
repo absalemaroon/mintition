@@ -7,7 +7,22 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { AlertCircle, CheckCircle, Clock, LogOut, Loader2, X } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
+import {
+  AlertCircle,
+  CheckCircle,
+  Clock,
+  LogOut,
+  Loader2,
+  X,
+  LayoutDashboard,
+  WalletCards,
+  Fuel,
+  Sparkles,
+  Layers3,
+  Settings2,
+  CircleHelp,
+} from "lucide-react"
 import { ethers } from "ethers"
 import { toast } from "sonner"
 import { storage } from "@/lib/storage"
@@ -526,15 +541,52 @@ export default function Dashboard() {
   const totalMints = wallets.reduce((sum, w) => sum + (w.mintsCompleted || 0), 0)
 
   return (
-    <div className="min-h-screen bg-background p-4 md:p-8">
-      <div className="max-w-7xl mx-auto space-y-8">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold">Mintition</h1>
-            <p className="text-muted-foreground">{userEmail}</p>
+    <div className="min-h-screen bg-background p-3 text-foreground md:p-5">
+      <div className="mx-auto flex min-h-[calc(100vh-2rem)] max-w-[1600px] overflow-hidden rounded-[1.75rem] border border-border/70 bg-card shadow-[0_24px_80px_rgba(18,18,18,0.06)]">
+        <aside className="hidden w-64 shrink-0 flex-col border-r border-border/70 bg-muted/20 p-5 lg:flex">
+          <div className="flex items-center gap-3 border-b border-border/70 pb-6">
+            <div className="flex size-9 items-center justify-center rounded-xl bg-foreground text-background">
+              <Layers3 className="size-4" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold tracking-tight">Mintition</p>
+              <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Operations</p>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
+          <nav className="mt-7 space-y-1" aria-label="Main navigation">
+            <p className="mb-3 px-3 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Workspace</p>
+            {([
+              [LayoutDashboard, "Overview", true],
+              [WalletCards, "Wallets", false],
+              [Fuel, "Auto-funding", false],
+              [Sparkles, "Minting", false],
+            ] as [LucideIcon, string, boolean][]).map(([Icon, label, active]) => (
+              <div key={label as string} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm ${active ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted"}`}>
+                <Icon className="size-4" />
+                <span>{label as string}</span>
+              </div>
+            ))}
+          </nav>
+          <div className="mt-auto space-y-1 border-t border-border/70 pt-5">
+            <div className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-muted-foreground"><Settings2 className="size-4" />Settings</div>
+            <div className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-muted-foreground"><CircleHelp className="size-4" />Help center</div>
+            <div className="mt-5 rounded-xl bg-muted/70 p-3">
+              <p className="truncate text-xs font-medium">{userEmail || "Workspace member"}</p>
+              <p className="mt-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Admin account</p>
+            </div>
+          </div>
+        </aside>
+
+        <main className="min-w-0 flex-1 p-5 md:p-8">
+          <div className="mx-auto max-w-6xl space-y-8">
+            {/* Header */}
+            <div className="flex flex-col gap-5 border-b border-border/70 pb-7 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">Workspace / Overview</p>
+                <h1 className="text-3xl font-semibold tracking-[-0.04em] md:text-4xl">Welcome back<span className="text-muted-foreground">.</span></h1>
+                <p className="mt-2 text-sm text-muted-foreground">Manage wallet operations and credential mints from one place.</p>
+              </div>
+              <div className="flex items-center gap-2">
             {connectedAddress ? (
               <div className="flex items-center gap-2">
                 <div className="text-sm text-muted-foreground">
@@ -557,14 +609,15 @@ export default function Dashboard() {
         </div>
 
         <Tabs defaultValue="wallets" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="mb-7 inline-flex h-auto w-full justify-start gap-1 rounded-xl border border-border/70 bg-muted/40 p-1 sm:w-auto">
+
             <TabsTrigger value="wallets">Wallets</TabsTrigger>
             <TabsTrigger value="funding">Auto-Funding</TabsTrigger>
             <TabsTrigger value="mint">Minting</TabsTrigger>
           </TabsList>
 
           <TabsContent value="wallets" className="space-y-6">
-            <Card className="glass">
+            <Card className="border-border/70 bg-card shadow-none">
               <CardHeader>
                 <CardTitle>Generate Wallets</CardTitle>
               </CardHeader>
@@ -629,7 +682,7 @@ export default function Dashboard() {
             </Card>
 
             {/* Mint Section */}
-            <Card className="glass">
+            <Card className="border-border/70 bg-card shadow-none">
               <CardHeader>
                 <CardTitle>Mint NFTs</CardTitle>
                 <CardDescription>Mint NFTs to all wallets</CardDescription>
@@ -732,7 +785,7 @@ export default function Dashboard() {
 
           {/* Load Existing Batch */}
           {batches.length > 0 && (
-            <Card className="glass">
+            <Card className="border-border/70 bg-card shadow-none">
               <CardHeader>
                 <CardTitle>Load Saved Batch</CardTitle>
                 <CardDescription>Reuse previously generated wallet batches</CardDescription>
@@ -763,7 +816,7 @@ export default function Dashboard() {
 
           {/* Save Batch */}
           {wallets.length > 0 && !selectedBatchId && (
-            <Card className="glass">
+            <Card className="border-border/70 bg-card shadow-none">
               <CardHeader>
                 <CardTitle>Save Current Batch</CardTitle>
               </CardHeader>
@@ -785,6 +838,8 @@ export default function Dashboard() {
             </Card>
           )}
         </section>
+          </div>
+        </main>
       </div>
     </div>
   )
