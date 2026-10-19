@@ -57,6 +57,8 @@ export default function Dashboard() {
   const [batchName, setBatchName] = useState(`Batch ${Date.now()}`)
   const [isSavingBatch, setIsSavingBatch] = useState(false)
   const [userEmail, setUserEmail] = useState<string>("")
+  const [activeView, setActiveView] = useState("wallets")
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   const { mintCredential, getBalance } = useWeb3Contract()
   const router = useRouter()
@@ -558,17 +560,19 @@ export default function Dashboard() {
             </div>
           </div>
           <nav className="mt-7 space-y-1" aria-label="Main navigation">
-            <p className="mb-3 px-3 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Workspace</p>
+            <p className="mb-3 px-3 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Menu</p>
             {([
-              [LayoutDashboard, "Overview", true],
-              [WalletCards, "Wallets", false],
-              [Fuel, "Auto-funding", false],
-              [Sparkles, "Minting", false],
-            ] as [LucideIcon, string, boolean][]).map(([Icon, label, active]) => (
-              <div key={label as string} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm ${active ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted"}`}>
+              [LayoutDashboard, "Dashboard", "wallets"],
+              [WalletCards, "Wallets", "wallets"],
+              [Fuel, "Auto-Funding", "funding"],
+              [Sparkles, "Minting", "mint"],
+              [Activity, "Transactions", "mint"],
+              [Layers3, "Batches", "wallets"],
+            ] as [LucideIcon, string, string][]).map(([Icon, label, view], index) => (
+              <button key={`${label}-${index}`} type="button" onClick={() => { setActiveView(view); setMobileNavOpen(false) }} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-colors ${activeView === view && (label === "Dashboard" || label.toLowerCase().includes(activeView === "funding" ? "fund" : activeView === "mint" ? "mint" : "wallet")) ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"}`}>
                 <Icon className="size-4" />
-                <span>{label as string}</span>
-              </div>
+                <span>{label}</span>
+              </button>
             ))}
           </nav>
           <div className="mt-auto space-y-1 border-t border-border/70 pt-5">
@@ -582,17 +586,25 @@ export default function Dashboard() {
         </aside>
 
         <main className="min-w-0 flex-1">
+          <div className="flex items-center justify-between border-b border-border/70 px-5 py-4 lg:hidden">
+            <button type="button" aria-label="Open navigation" onClick={() => setMobileNavOpen((open) => !open)} className="rounded-lg border border-border p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"><Layers3 className="size-4" /></button>
+            <div className="flex items-center gap-2"><div className="flex size-7 items-center justify-center rounded-lg bg-foreground text-background"><Layers3 className="size-3" /></div><span className="text-sm font-semibold">Mintition</span></div>
+            <span className="rounded-full border border-border bg-muted/40 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Celo</span>
+          </div>
+          {mobileNavOpen && <div className="border-b border-border/70 bg-muted/10 p-4 lg:hidden"><nav className="grid gap-1" aria-label="Mobile navigation">{[ [WalletCards, "Wallets", "wallets"], [Fuel, "Auto-Funding", "funding"], [Sparkles, "Minting", "mint"], [Layers3, "Batches", "wallets"] ].map(([Icon, label, view]) => <button key={label as string} type="button" onClick={() => { setActiveView(view as string); setMobileNavOpen(false) }} className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-muted-foreground hover:bg-muted"><Icon className="size-4" /><span>{label as string}</span></button>)}</nav></div>}
           <ResizablePanelGroup orientation="horizontal" className="min-h-[calc(100vh-2rem)]">
             <ResizablePanel defaultSize={72} minSize={52} className="min-w-0 p-5 md:p-8">
               <div className="mx-auto max-w-6xl space-y-8">
             {/* Header */}
             <div className="flex flex-col gap-5 border-b border-border/70 pb-7 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">Workspace / Overview</p>
-                <h1 className="text-3xl font-semibold tracking-[-0.04em] md:text-4xl">Welcome back<span className="text-muted-foreground">.</span></h1>
+                <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">Workspace / {activeView === "funding" ? "Auto-Funding" : activeView === "mint" ? "Minting" : "Wallets"}</p>
+                <h1 className="text-3xl font-semibold tracking-[-0.04em] md:text-4xl">{activeView === "funding" ? "Auto-Funding" : activeView === "mint" ? "Minting" : "Wallet workspace"}<span className="text-muted-foreground">.</span></h1>
                 <p className="mt-2 text-sm text-muted-foreground">Manage wallet operations and credential mints from one place.</p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+            <span className="hidden rounded-full border border-border bg-muted/40 px-3 py-1.5 text-xs font-medium sm:inline-flex">Celo</span>
+            <span className="hidden size-8 items-center justify-center rounded-lg border border-border text-muted-foreground sm:inline-flex" aria-label="Notifications"><Activity className="size-4" /></span>
             {connectedAddress ? (
               <div className="flex items-center gap-2">
                 <div className="text-sm text-muted-foreground">
@@ -614,9 +626,8 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <Tabs defaultValue="wallets" className="w-full">
-          <TabsList className="mb-7 inline-flex h-auto w-full justify-start gap-1 rounded-xl border border-border/70 bg-muted/40 p-1 sm:w-auto">
-
+        <Tabs value={activeView} onValueChange={setActiveView} className="w-full">
+          <TabsList className="sr-only" aria-label="Workspace views">
             <TabsTrigger value="wallets">Wallets</TabsTrigger>
             <TabsTrigger value="funding">Auto-Funding</TabsTrigger>
             <TabsTrigger value="mint">Minting</TabsTrigger>
