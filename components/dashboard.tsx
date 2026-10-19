@@ -35,7 +35,6 @@ import { saveBatchAction, getAllBatchesAction } from "@/app/actions"
 import { useRouter } from "next/navigation"
 import { WalletManagement } from "./wallet-management"
 import { AutoFundingSection } from "./auto-funding-section"
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 
 export default function Dashboard() {
   const [wallets, setWallets] = useState<MintWallet[]>([])
@@ -592,8 +591,8 @@ export default function Dashboard() {
             <span className="rounded-full border border-border bg-muted/40 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Celo</span>
           </div>
           {mobileNavOpen && <div className="border-b border-border/70 bg-muted/10 p-4 lg:hidden"><nav className="grid gap-1" aria-label="Mobile navigation">{[ [WalletCards, "Wallets", "wallets"], [Fuel, "Auto-Funding", "funding"], [Sparkles, "Minting", "mint"], [Layers3, "Batches", "wallets"] ].map(([Icon, label, view]) => <button key={label as string} type="button" onClick={() => { setActiveView(view as string); setMobileNavOpen(false) }} className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-muted-foreground hover:bg-muted"><Icon className="size-4" /><span>{label as string}</span></button>)}</nav></div>}
-          <ResizablePanelGroup orientation="horizontal" className="min-h-[calc(100vh-2rem)]">
-            <ResizablePanel defaultSize={72} minSize={52} className="min-w-0 p-5 md:p-8">
+<div className="grid min-h-[calc(100vh-2rem)] grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px]">
+<div className="min-w-0 p-5 md:p-8">
               <div className="mx-auto max-w-6xl space-y-8">
             {/* Header */}
             <div className="flex flex-col gap-5 border-b border-border/70 pb-7 sm:flex-row sm:items-end sm:justify-between">
@@ -856,9 +855,8 @@ export default function Dashboard() {
           )}
         </section>
               </div>
-            </ResizablePanel>
-            <ResizableHandle withHandle />
-            <ResizablePanel defaultSize={28} minSize={20} maxSize={40} className="hidden min-w-[260px] bg-muted/10 p-5 xl:block">
+</div>
+<div className="hidden min-w-0 border-l border-border/70 bg-muted/10 p-5 xl:block">
               <aside className="sticky top-5 space-y-5" aria-label="Workbench inspector">
                 <div className="flex items-center justify-between border-b border-border/70 pb-4">
                   <div className="flex items-center gap-2"><PanelRight className="size-4" /><p className="text-sm font-semibold">Inspector</p></div>
@@ -873,12 +871,12 @@ export default function Dashboard() {
                   </CardContent>
                 </Card>
                 <Card className="border-border/70 bg-card shadow-none">
-                  <CardHeader className="pb-3"><CardTitle className="text-sm">Workbench layout</CardTitle><CardDescription>Drag the divider to resize this inspector.</CardDescription></CardHeader>
+                  <CardHeader className="pb-3"><CardTitle className="text-sm">Workspace context</CardTitle><CardDescription>Operational context for your current workspace.</CardDescription></CardHeader>
                   <CardContent><p className="text-xs leading-5 text-muted-foreground">Keep your wallet data in focus while monitoring operational context alongside it.</p></CardContent>
                 </Card>
               </aside>
-            </ResizablePanel>
-          </ResizablePanelGroup>
+</div>
+</div>
         </main>
       </div>
     </div>
