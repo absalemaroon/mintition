@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react"
-import { LayoutDashboard, WalletCards, Fuel, Sparkles, Receipt, Layers3 } from "lucide-react"
+import { LayoutDashboard, WalletCards, Fuel, Sparkles, Receipt, Layers3, CalendarClock, Settings } from "lucide-react"
 
-export type ViewId = "dashboard" | "wallets" | "funding" | "mint" | "transactions" | "batches"
+export type ViewId = "dashboard" | "wallets" | "funding" | "mint" | "schedule" | "transactions" | "batches" | "settings"
 
 export interface NavItem {
   id: ViewId
@@ -41,6 +41,13 @@ export const NAV_ITEMS: NavItem[] = [
     subtitle: "Point at a contract and mint a credential from every wallet.",
   },
   {
+    id: "schedule",
+    label: "Scheduler",
+    icon: CalendarClock,
+    title: "Scheduler",
+    subtitle: "Schedule minting runs. They keep going on the server when this app is closed.",
+  },
+  {
     id: "transactions",
     label: "Transactions",
     icon: Receipt,
@@ -52,7 +59,14 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Batches",
     icon: Layers3,
     title: "Batches",
-    subtitle: "Save generated wallet groups and load them again later.",
+    subtitle: "Your encrypted wallet groups. Load one to reuse its wallets.",
+  },
+  {
+    id: "settings",
+    label: "Settings",
+    icon: Settings,
+    title: "Settings",
+    subtitle: "Branding, who can reach this app, and the security checklist.",
   },
 ]
 

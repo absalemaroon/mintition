@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle, Loader } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -18,6 +18,15 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
+  const [brand, setBrand] = useState<{ name: string; hasLogo: boolean; logoVersion: number }>({ name: "Mintition", hasLogo: false, logoVersion: 0 })
+
+  // Name and logo come from Settings. Fails quietly to the defaults.
+  useEffect(() => {
+    fetch("/api/branding", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => data && setBrand(data))
+      .catch(() => undefined)
+  }, [])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -49,7 +58,11 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         <Card className="gap-6 py-6">
           <CardHeader className="space-y-2">
-            <CardTitle className="text-2xl font-semibold tracking-tight">Mintition</CardTitle>
+            {brand.hasLogo && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={`/api/branding/logo?v=${brand.logoVersion}`} alt="" className="mb-2 size-12 rounded-xl object-cover" />
+            )}
+            <CardTitle className="text-2xl font-semibold tracking-tight">{brand.name}</CardTitle>
             <CardDescription>NFT Bulk Minting Dashboard</CardDescription>
           </CardHeader>
           <CardContent>

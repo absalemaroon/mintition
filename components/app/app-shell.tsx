@@ -7,7 +7,13 @@ import { cn } from "@/lib/utils"
 import { BOTTOM_TAB_IDS, NAV_ITEMS, getNavItem, type ViewId } from "@/components/app/nav"
 import { ThemeToggle } from "@/components/app/theme-toggle"
 
+export interface ShellBrand {
+  name: string
+  logoUrl: string | null
+}
+
 interface AppShellProps {
+  brand: ShellBrand
   activeView: ViewId
   onNavigate: (view: ViewId) => void
   userEmail: string
@@ -17,21 +23,27 @@ interface AppShellProps {
   children: ReactNode
 }
 
-function LogoMark({ className }: { className?: string }) {
+function LogoMark({ brand, className }: { brand: ShellBrand; className?: string }) {
   return (
     <span
       className={cn(
-        "flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-sm font-semibold text-primary-foreground",
+        "flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-primary text-sm font-semibold text-primary-foreground",
         className,
       )}
       aria-hidden="true"
     >
-      M
+      {brand.logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={brand.logoUrl} alt="" className="size-full object-cover" />
+      ) : (
+        brand.name.slice(0, 1).toUpperCase() || "M"
+      )}
     </span>
   )
 }
 
 interface SidebarBodyProps {
+  brand: ShellBrand
   activeView: ViewId
   onNavigate: (view: ViewId) => void
   userEmail: string
@@ -42,7 +54,7 @@ interface SidebarBodyProps {
   showThemeToggle?: boolean
 }
 
-function SidebarBody({ activeView, onNavigate, userEmail, onLogout, collapsed = false, onExpand, showThemeToggle }: SidebarBodyProps) {
+function SidebarBody({ brand, activeView, onNavigate, userEmail, onLogout, collapsed = false, onExpand, showThemeToggle }: SidebarBodyProps) {
   const [query, setQuery] = useState("")
   const items = NAV_ITEMS.filter((item) => item.label.toLowerCase().includes(query.trim().toLowerCase()))
   const displayName = userEmail ? userEmail.split("@")[0] : "Workspace member"
@@ -50,8 +62,8 @@ function SidebarBody({ activeView, onNavigate, userEmail, onLogout, collapsed = 
   return (
     <div className="flex h-full flex-col gap-5 p-3">
       <div className={cn("flex items-center gap-2.5 px-1.5 pt-1", collapsed && "justify-center px-0")}>
-        <LogoMark />
-        {!collapsed && <span className="text-base font-semibold tracking-tight">Mintition</span>}
+        <LogoMark brand={brand} />
+        {!collapsed && <span className="truncate text-base font-semibold tracking-tight">{brand.name}</span>}
       </div>
 
       {collapsed ? (
@@ -139,7 +151,7 @@ function SidebarBody({ activeView, onNavigate, userEmail, onLogout, collapsed = 
   )
 }
 
-export function AppShell({ activeView, onNavigate, userEmail, onLogout, chainSelector, walletButton, children }: AppShellProps) {
+export function AppShell({ brand, activeView, onNavigate, userEmail, onLogout, chainSelector, walletButton, children }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -175,6 +187,7 @@ export function AppShell({ activeView, onNavigate, userEmail, onLogout, chainSel
         )}
       >
         <SidebarBody
+          brand={brand}
           activeView={activeView}
           onNavigate={navigate}
           userEmail={userEmail}
@@ -191,7 +204,7 @@ export function AppShell({ activeView, onNavigate, userEmail, onLogout, chainSel
           <Dialog.Content className="fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] border-r border-border bg-background pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] outline-none duration-200 data-[state=closed]:animate-out data-[state=closed]:slide-out-to-left data-[state=open]:animate-in data-[state=open]:slide-in-from-left lg:hidden">
             <Dialog.Title className="sr-only">Navigation</Dialog.Title>
             <Dialog.Description className="sr-only">Move between the pages of your workspace.</Dialog.Description>
-            <SidebarBody activeView={activeView} onNavigate={navigate} userEmail={userEmail} onLogout={onLogout} showThemeToggle />
+            <SidebarBody brand={brand} activeView={activeView} onNavigate={navigate} userEmail={userEmail} onLogout={onLogout} showThemeToggle />
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>

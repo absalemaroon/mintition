@@ -73,7 +73,7 @@ export function AutoFundingSection({ wallets, onWalletsUpdate, nativeSymbol = "C
         const result = results.find((r) => r.wallet.address === wallet.address)
         return {
           ...wallet,
-          fundingStatus: result?.success ? "funded" : "not_funded",
+          fundingStatus: result?.success ? ("funded" as const) : ("not_funded" as const),
           transactionHash: result?.txHash,
           balance: result?.success ? amount : wallet.balance,
         }

@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { AlertCircle, Check, CheckCircle2, Clock, Download, Loader2, X } from "lucide-react"
 import type { MintWallet } from "@/lib/types"
-import { storage } from "@/lib/storage"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { shortAddress } from "@/lib/chains"
 import { CopyButton } from "@/components/app/copy-button"
 import { StatusBadge, labelForStatus, toneForStatus } from "@/components/app/status-badge"
@@ -19,9 +21,11 @@ interface WalletManagementProps {
   /** Native token shown next to balances. Pass the active chain's symbol. */
   nativeSymbol?: string
   loading?: boolean
+  /** Batch to export. Empty exports every wallet in the vault. */
+  batchId?: string
 }
 
-export function WalletManagement({ wallets, onWalletsUpdate, isGenerating, nativeSymbol = "CELO", loading }: WalletManagementProps) {
+export function WalletManagement({ wallets, onWalletsUpdate, isGenerating, nativeSymbol = "CELO", loading, batchId }: WalletManagementProps) {
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
   const totalPages = Math.ceil(wallets.length / itemsPerPage)
@@ -29,18 +33,39 @@ export function WalletManagement({ wallets, onWalletsUpdate, isGenerating, nativ
   const page = Math.min(currentPage, Math.max(totalPages, 1))
   const paginatedWallets = wallets.slice((page - 1) * itemsPerPage, page * itemsPerPage)
 
-  const exportCSV = () => {
-    const csv = storage.exportWalletsAsCSV()
-    const blob = new Blob([csv], { type: "text/csv" })
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `wallets-${Date.now()}.csv`
-    a.click()
+  // Private keys live only on the server. Exporting them needs the account password again.
+  const [exportOpen, setExportOpen] = useState(false)
+  const [exportPassword, setExportPassword] = useState("")
+  const [exporting, setExporting] = useState(false)
 
-    toast.success("CSV exported", {
-      description: `Downloaded ${wallets.length} wallets`,
-    })
+  const exportCSV = async () => {
+    setExporting(true)
+    try {
+      const res = await fetch("/api/wallets/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: exportPassword, batchId: batchId || undefined }),
+        cache: "no-store",
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || "Export failed")
+      }
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `wallets-${Date.now()}.csv`
+      a.click()
+      window.URL.revokeObjectURL(url)
+      setExportOpen(false)
+      setExportPassword("")
+      toast.success("CSV exported", { description: "Contains private keys. Store it somewhere safe and delete it when done." })
+    } catch (error) {
+      toast.error("Export failed", { description: error instanceof Error ? error.message : undefined })
+    } finally {
+      setExporting(false)
+    }
   }
 
   const fundedIndicator = (fundingStatus: string) => {
@@ -95,11 +120,40 @@ export function WalletManagement({ wallets, onWalletsUpdate, isGenerating, nativ
           <CardTitle className="text-lg">Wallet Management</CardTitle>
           <CardDescription>Monitor and manage your minting wallets</CardDescription>
         </div>
-        <Button onClick={exportCSV} disabled={wallets.length === 0} variant="outline" size="sm" className="shrink-0">
+        <Button onClick={() => setExportOpen((open) => !open)} disabled={wallets.length === 0} variant="outline" size="sm" className="shrink-0" aria-expanded={exportOpen}>
           <Download aria-hidden="true" />
           Export as CSV
         </Button>
       </CardHeader>
+
+      {exportOpen && (
+        <div className="space-y-3 border-b bg-muted/40 px-5 py-4">
+          <Alert variant="warning">
+            <AlertCircle aria-hidden="true" />
+            <AlertDescription>The file contains private keys in plain text. Enter your account password to continue.</AlertDescription>
+          </Alert>
+          <div className="space-y-2">
+            <Label htmlFor="export-password">Account password</Label>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                id="export-password"
+                type="password"
+                value={exportPassword}
+                onChange={(e) => setExportPassword(e.target.value)}
+                autoComplete="current-password"
+                onKeyDown={(e) => e.key === "Enter" && exportPassword && !exporting && exportCSV()}
+              />
+              <Button onClick={exportCSV} disabled={!exportPassword || exporting}>
+                {exporting ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Download aria-hidden="true" />}
+                Download
+              </Button>
+              <Button variant="outline" onClick={() => { setExportOpen(false); setExportPassword("") }}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <CardContent className="p-0">
         {loading ? (

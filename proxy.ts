@@ -1,55 +1,57 @@
+import { NextResponse, type NextRequest } from "next/server"
 import { updateSession } from "@/lib/supabase/proxy"
-import type { NextRequest } from "next/server"
-import { NextResponse } from "next/server"
-import { createServerClient } from "@supabase/ssr"
+import { checkIp } from "@/lib/security/allowlist"
+import { clientIpFromHeaders } from "@/lib/security/ip"
 
-export async function proxy(request: NextRequest) {
-  const requestUrl = new URL(request.url)
-  const pathname = requestUrl.pathname
+const NO_INDEX = "noindex, nofollow, noarchive, nosnippet, noimageindex"
 
-  // First, update the session
-  const response = await updateSession(request)
+/** Pages and endpoints that work without being signed in (the IP gate still applies to all of them). */
+const PUBLIC_PREFIXES = ["/auth/", "/api/auth/", "/api/branding"]
 
-  // Create a Supabase client to check user session
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            response.cookies.set(name, value, options)
-          })
-        },
-      },
-    },
-  )
+function isStaticAsset(pathname: string) {
+  return pathname.startsWith("/_next/") || /\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|woff2?)$/.test(pathname)
+}
 
-  // Get the user session
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  // Handle auth route access
-  if (pathname.startsWith("/auth/")) {
-    // If user is authenticated and trying to access login, redirect to dashboard
-    if (user && pathname === "/auth/login") {
-      return NextResponse.redirect(new URL("/dashboard", request.url))
-    }
-    return response
-  }
-
-  // Protect other routes - redirect to login if not authenticated
-  if (!user) {
-    return NextResponse.redirect(new URL("/auth/login", request.url))
-  }
-
+function withHeaders(response: NextResponse, pathname: string) {
+  response.headers.set("X-Robots-Tag", NO_INDEX)
+  if (!isStaticAsset(pathname)) response.headers.set("Cache-Control", "no-store")
   return response
 }
 
+export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl
+
+  // 1. The background worker is called by Supabase, not by you. It is protected by its own secret
+  //    (checked in the route), so it skips the IP gate and the login.
+  if (pathname === "/api/cron/mint-worker") return withHeaders(NextResponse.next(), pathname)
+
+  // 2. IP allowlist. Anyone else gets a blank 404: the app never loads, and nothing says it exists.
+  const gate = await checkIp(clientIpFromHeaders(request.headers))
+  if (!gate.allowed) {
+    return new NextResponse("Not Found", {
+      status: 404,
+      headers: { "Content-Type": "text/plain", "Cache-Control": "no-store", "X-Robots-Tag": NO_INDEX },
+    })
+  }
+
+  // 3. Static files need no session.
+  if (isStaticAsset(pathname)) return withHeaders(NextResponse.next(), pathname)
+
+  // 4. Session.
+  const { response, user } = await updateSession(request)
+  const isPublic = PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix)) || pathname === "/robots.txt"
+
+  if (user && pathname === "/auth/login") return withHeaders(NextResponse.redirect(new URL("/dashboard", request.url)), pathname)
+  if (!user && !isPublic) {
+    if (pathname.startsWith("/api/")) {
+      return withHeaders(NextResponse.json({ error: "Not signed in" }, { status: 401 }), pathname)
+    }
+    return withHeaders(NextResponse.redirect(new URL("/auth/login", request.url)), pathname)
+  }
+  return withHeaders(response, pathname)
+}
+
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  // Everything, including static files: an IP that is not allowed cannot load even one byte.
+  matcher: ["/:path*"],
 }

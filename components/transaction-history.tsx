@@ -87,6 +87,7 @@ export function TransactionHistory({
                     <td className="px-5 py-3 font-mono text-xs">{shortAddress(tx.wallet, 10, 8)}</td>
                     <td className="px-5 py-3">
                       <StatusBadge tone={toneForStatus(tx.status)}>{labelForStatus(tx.status)}</StatusBadge>
+                      {tx.error && <span className="mt-1 block max-w-64 truncate text-xs text-muted-foreground" title={tx.error}>{tx.error}</span>}
                     </td>
                     <td className="px-5 py-3 text-right text-muted-foreground tabular-nums">
                       {new Date(tx.timestamp).toLocaleTimeString()}
@@ -107,6 +108,7 @@ export function TransactionHistory({
                 </div>
                 <HashCell hash={tx.hash} chain={chain} />
                 <p className="font-mono text-xs text-muted-foreground">{shortAddress(tx.wallet, 10, 8)}</p>
+                {tx.error && <p className="text-xs text-muted-foreground">{tx.error}</p>}
               </li>
             ))}
           </ul>
