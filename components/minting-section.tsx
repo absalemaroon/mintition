@@ -81,7 +81,7 @@ export function MintingSection({
             <>
               <div className="flex gap-2">
                 <Button
-                  variant="gradient"
+                  variant="default"
                   size="lg"
                   onClick={onMint}
                   disabled={isMinting || walletCount === 0 || !contractAddress}
