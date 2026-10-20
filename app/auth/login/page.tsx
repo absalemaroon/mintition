@@ -45,17 +45,17 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-secondary/20 p-4">
+    <div className="min-h-dvh flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-sm">
-        <Card className="border-border/50">
+        <Card className="gap-6 py-6">
           <CardHeader className="space-y-2">
-            <CardTitle className="text-3xl font-bold text-primary">Mintition</CardTitle>
-            <CardDescription className="text-base">NFT Bulk Minting Dashboard</CardDescription>
+            <CardTitle className="text-2xl font-semibold tracking-tight">Mintition</CardTitle>
+            <CardDescription>NFT Bulk Minting Dashboard</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleLogin} className="space-y-6">
               {error && (
-                <Alert className="bg-destructive/10 border-destructive/30">
+                <Alert variant="destructive" className="bg-danger-soft border-danger/30">
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription className="text-sm">{error}</AlertDescription>
                 </Alert>
@@ -96,7 +96,7 @@ export default function LoginPage() {
               <Button
                 type="submit"
                 disabled={isLoading}
-                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-medium"
+                className="w-full"
               >
                 {isLoading ? (
                   <>

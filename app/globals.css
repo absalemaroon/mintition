@@ -3,81 +3,108 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+  Design tokens
+  Light: soft off-white page, white cards, 1px quiet borders, near-black actions.
+  Dark: same structure on neutral charcoal. Every colour below is a variable, so
+  restyling the whole app is a matter of editing this block.
+*/
 :root {
-  --background: oklch(0.965 0.008 95);
-  --foreground: oklch(0.16 0.01 85);
-  --card: oklch(0.985 0.004 95);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.93 0.01 95);
-  --muted-foreground: oklch(0.47 0.015 85);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.577 0.245 27.325);
-  --border: oklch(0.84 0.015 90);
-  --input: oklch(0.89 0.012 90);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
+  --background: #fafaf8;
+  --foreground: #111111;
+  --card: #ffffff;
+  --card-foreground: #111111;
+  --popover: #ffffff;
+  --popover-foreground: #111111;
+  --primary: #111111;
+  --primary-foreground: #ffffff;
+  --secondary: #f5f5f2;
+  --secondary-foreground: #111111;
+  --muted: #f5f5f2;
+  --muted-foreground: #6b6b66;
+  --accent: #f0f0ec;
+  --accent-foreground: #111111;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #e7e7e3;
+  --input: #e7e7e3;
+  --ring: #111111;
+
+  --success: #15803d;
+  --success-soft: #e8f5ec;
+  --warning: #b45309;
+  --warning-soft: #fdf3e3;
+  --info: #1d4ed8;
+  --info-soft: #e8eefc;
+  --danger: #dc2626;
+  --danger-soft: #fdeaea;
+
+  --chart-1: #111111;
+  --chart-2: #6b6b66;
+  --chart-3: #15803d;
+  --chart-4: #b45309;
+  --chart-5: #1d4ed8;
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+
+  --sidebar: #fafaf8;
+  --sidebar-foreground: #111111;
+  --sidebar-primary: #111111;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f0f0ec;
+  --sidebar-accent-foreground: #111111;
+  --sidebar-border: #e7e7e3;
+  --sidebar-ring: #111111;
 }
 
-/* Custom dark theme override with black background and purple accent */
 .dark {
-  --background: oklch(0.08 0 0);
-  --foreground: oklch(0.98 0 0);
-  --card: oklch(0.12 0 0);
-  --card-foreground: oklch(0.98 0 0);
-  --popover: oklch(0.12 0 0);
-  --popover-foreground: oklch(0.98 0 0);
-  --primary: oklch(0.63 0.258 272.72);
-  --primary-foreground: oklch(0.12 0 0);
-  --secondary: oklch(0.15 0 0);
-  --secondary-foreground: oklch(0.98 0 0);
-  --muted: oklch(0.25 0 0);
-  --muted-foreground: oklch(0.65 0 0);
-  --accent: oklch(0.63 0.258 272.72);
-  --accent-foreground: oklch(0.12 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.98 0 0);
-  --border: oklch(0.2 0 0);
-  --input: oklch(0.15 0 0);
-  --ring: oklch(0.63 0.258 272.72);
-  --chart-1: oklch(0.63 0.258 272.72);
-  --chart-2: oklch(0.7 0.228 18.65);
-  --chart-3: oklch(0.65 0.235 143.31);
-  --chart-4: oklch(0.68 0.224 74.11);
-  --chart-5: oklch(0.6 0.246 31.77);
-  --sidebar: oklch(0.12 0 0);
-  --sidebar-foreground: oklch(0.98 0 0);
-  --sidebar-primary: oklch(0.63 0.258 272.72);
-  --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.15 0 0);
-  --sidebar-accent-foreground: oklch(0.98 0 0);
-  --sidebar-border: oklch(0.2 0 0);
-  --sidebar-ring: oklch(0.63 0.258 272.72);
+  --background: #0c0c0b;
+  --foreground: #f4f4f2;
+  --card: #141413;
+  --card-foreground: #f4f4f2;
+  --popover: #141413;
+  --popover-foreground: #f4f4f2;
+  --primary: #f4f4f2;
+  --primary-foreground: #111111;
+  --secondary: #1b1b1a;
+  --secondary-foreground: #f4f4f2;
+  --muted: #1b1b1a;
+  --muted-foreground: #9a9a94;
+  --accent: #222221;
+  --accent-foreground: #f4f4f2;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #272725;
+  --input: #272725;
+  --ring: #f4f4f2;
+
+  --success: #4ade80;
+  --success-soft: #11261a;
+  --warning: #fbbf24;
+  --warning-soft: #2a2010;
+  --info: #7aa2ff;
+  --info-soft: #121c33;
+  --danger: #f87171;
+  --danger-soft: #2c1414;
+
+  --chart-1: #f4f4f2;
+  --chart-2: #9a9a94;
+  --chart-3: #4ade80;
+  --chart-4: #fbbf24;
+  --chart-5: #7aa2ff;
+
+  --sidebar: #0c0c0b;
+  --sidebar-foreground: #f4f4f2;
+  --sidebar-primary: #f4f4f2;
+  --sidebar-primary-foreground: #111111;
+  --sidebar-accent: #222221;
+  --sidebar-accent-foreground: #f4f4f2;
+  --sidebar-border: #272725;
+  --sidebar-ring: #f4f4f2;
 }
 
 @theme inline {
-  --font-sans: "Geist", "Geist Fallback";
-  --font-mono: "Geist Mono", "Geist Mono Fallback";
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -97,6 +124,14 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
@@ -120,17 +155,22 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
   body {
     @apply bg-background text-foreground;
-    font-feature-settings: "ss01" 1, "cv11" 1;
+    font-feature-settings: "cv11" 1, "ss01" 1;
   }
-
   ::selection {
     @apply bg-foreground text-background;
   }
-
-  /* Glass morphism effect */
-  .glass {
-    @apply bg-card/50 backdrop-blur-md border border-border/20;
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }

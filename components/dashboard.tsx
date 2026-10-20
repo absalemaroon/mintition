@@ -2,39 +2,11 @@
 
 import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import type { LucideIcon } from "lucide-react"
-import {
-  AlertCircle,
-  CheckCircle,
-  Clock,
-  LogOut,
-  Loader2,
-  X,
-  LayoutDashboard,
-  WalletCards,
-  Fuel,
-  Sparkles,
-  Layers3,
-  Settings2,
-  CircleHelp,
-  PanelRight,
-  Activity,
-  SlidersHorizontal,
-  Search,
-  Moon,
-  Bell,
-  Copy,
-  Plus,
-  ArrowUpRight,
-  Receipt,
-  Menu,
-  LockKeyhole,
-} from "lucide-react"
+import { Label } from "@/components/ui/label"
+import { ArrowRight, Fuel, Minus, Plus, Sparkles, WalletCards, CheckCircle2 } from "lucide-react"
 import { ethers } from "ethers"
 import { toast } from "sonner"
 import { storage } from "@/lib/storage"
@@ -42,8 +14,19 @@ import { useWeb3Contract } from "@/lib/use-web3-contract"
 import type { Transaction, MintWallet } from "@/lib/types"
 import { saveBatchAction, getAllBatchesAction } from "@/app/actions"
 import { useRouter } from "next/navigation"
+import { CHAINS, getChain } from "@/lib/chains"
 import { WalletManagement } from "./wallet-management"
 import { AutoFundingSection } from "./auto-funding-section"
+import { MintingSection } from "./minting-section"
+import { BatchesSection } from "./batches-section"
+import { TransactionHistory } from "./transaction-history"
+import { AppShell } from "@/components/app/app-shell"
+import { ChainSelector } from "@/components/app/chain-selector"
+import { ConnectWalletButton } from "@/components/app/connect-wallet-button"
+import { EmptyState } from "@/components/app/empty-state"
+import { PageHeader } from "@/components/app/page-header"
+import { StatCard } from "@/components/app/stat-card"
+import { getNavItem, type ViewId } from "@/components/app/nav"
 
 export default function Dashboard() {
   const [wallets, setWallets] = useState<MintWallet[]>([])
@@ -65,8 +48,9 @@ export default function Dashboard() {
   const [batchName, setBatchName] = useState(`Batch ${Date.now()}`)
   const [isSavingBatch, setIsSavingBatch] = useState(false)
   const [userEmail, setUserEmail] = useState<string>("")
-  const [activeView, setActiveView] = useState("wallets")
-  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [activeView, setActiveView] = useState<ViewId>("dashboard")
+  // True once the browser has loaded saved wallets, so we show skeletons instead of a false "empty" screen.
+  const [hydrated, setHydrated] = useState(false)
 
   const { mintCredential, getBalance } = useWeb3Contract()
   const router = useRouter()
@@ -94,6 +78,10 @@ export default function Dashboard() {
         description: `Loaded ${savedWallets.length} wallets from storage`,
       })
     }
+  }, [])
+
+  useEffect(() => {
+    setHydrated(true)
   }, [])
 
   useEffect(() => {
@@ -554,359 +542,235 @@ export default function Dashboard() {
   const fundedWalletCount = wallets.filter((w) => w.fundingStatus === "funded").length
   const totalMints = wallets.reduce((sum, w) => sum + (w.mintsCompleted || 0), 0)
 
+  // Presentation-only values
+  const activeChain = getChain(networkId)
+  const totalBalance = wallets.reduce((sum, wallet) => sum + Number(wallet.balance || 0), 0).toFixed(2)
+  const page = getNavItem(activeView)
+
+  const statCards = (
+    <>
+      <StatCard icon={WalletCards} label="Total Wallets" value={wallets.length} helper="Wallets generated" loading={!hydrated} />
+      <StatCard icon={CheckCircle2} label="Funded Wallets" value={fundedWalletCount} helper="Ready to mint" loading={!hydrated} />
+      <StatCard icon={Sparkles} label="Total Mints" value={totalMints} helper="Across all wallets" loading={!hydrated} />
+      <StatCard icon={Fuel} label="Total Balance" value={`${totalBalance} ${activeChain.nativeSymbol}`} helper="Held by your wallets" loading={!hydrated} />
+    </>
+  )
+
+  const quickActions: { view: ViewId; icon: typeof Plus; title: string; description: string }[] = [
+    { view: "wallets", icon: Plus, title: "Generate wallets", description: "Create a fresh batch" },
+    { view: "funding", icon: Fuel, title: "Fund wallets", description: "Send gas to every wallet" },
+    { view: "mint", icon: Sparkles, title: "Mint NFTs", description: "Mint from every wallet" },
+  ]
+
   return (
-    <div className="min-h-screen bg-background p-3 text-foreground md:p-5">
-      <div className="mx-auto flex min-h-[calc(100vh-2rem)] max-w-[1600px] overflow-hidden rounded-[1.75rem] border border-border/70 bg-card shadow-[0_24px_80px_rgba(18,18,18,0.06)]">
-        <aside className="hidden w-64 shrink-0 flex-col border-r border-border/70 bg-muted/20 p-5 lg:flex">
-          <div className="flex items-center gap-3 border-b border-border/70 pb-6">
-            <div className="flex size-9 items-center justify-center rounded-xl bg-foreground text-background">
-              <Layers3 className="size-4" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold tracking-tight">Mintition</p>
-              <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Operations</p>
-            </div>
-          </div>
-          <div className="mt-6 flex items-center gap-2 rounded-xl border border-border/70 bg-background px-3 py-2.5">
-            <Search className="size-4 text-muted-foreground" />
-            <input aria-label="Search anything" placeholder="Search anything" className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground" />
-            <kbd className="hidden rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground sm:inline">⌘ K</kbd>
-          </div>
-          <nav className="mt-7 space-y-1" aria-label="Main navigation">
-            <p className="mb-3 px-3 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">Menu</p>
-            {([
-              [LayoutDashboard, "Dashboard", "wallets"],
-              [WalletCards, "Wallets", "wallets"],
-              [Fuel, "Auto-Funding", "funding"],
-              [Sparkles, "Minting", "mint"],
-              [Activity, "Transactions", "mint"],
-              [Layers3, "Batches", "wallets"],
-            ] as [LucideIcon, string, string][]).map(([Icon, label, view], index) => (
-              <button key={`${label}-${index}`} type="button" onClick={() => { setActiveView(view); setMobileNavOpen(false) }} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-colors ${activeView === view && (label === "Dashboard" || label.toLowerCase().includes(activeView === "funding" ? "fund" : activeView === "mint" ? "mint" : "wallet")) ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"}`}>
-                <Icon className="size-4" />
-                <span>{label}</span>
-              </button>
-            ))}
-          </nav>
-          <div className="mt-auto space-y-1 border-t border-border/70 pt-5">
-            <div className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-muted-foreground"><Settings2 className="size-4" />Settings</div>
-            <div className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-muted-foreground"><CircleHelp className="size-4" />Help center</div>
-            <div className="mt-5 flex items-center gap-3 rounded-xl border border-border/70 bg-background p-3">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold">{(userEmail || "M").slice(0, 1).toUpperCase()}</div>
-              <div className="min-w-0 flex-1"><p className="truncate text-xs font-medium">{userEmail || "Workspace member"}</p><p className="mt-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Admin account</p></div>
-              <button type="button" onClick={handleLogout} aria-label="Log out" className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"><LogOut className="size-4" /></button>
-            </div>
-          </div>
-        </aside>
-
-        <main className="min-w-0 flex-1">
-          <div className="flex items-center justify-between border-b border-border/70 px-5 py-4 lg:hidden">
-            <button type="button" aria-label="Open navigation" onClick={() => setMobileNavOpen((open) => !open)} className="rounded-lg border border-border p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"><Layers3 className="size-4" /></button>
-            <div className="flex items-center gap-2"><div className="flex size-7 items-center justify-center rounded-lg bg-foreground text-background"><Layers3 className="size-3" /></div><span className="text-sm font-semibold">Mintition</span></div>
-            <span className="rounded-full border border-border bg-muted/40 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Celo</span>
-          </div>
-          {mobileNavOpen && <div className="border-b border-border/70 bg-muted/10 p-4 lg:hidden"><nav className="grid gap-1" aria-label="Mobile navigation">{[ [WalletCards, "Wallets", "wallets"], [Fuel, "Auto-Funding", "funding"], [Sparkles, "Minting", "mint"], [Layers3, "Batches", "wallets"] ].map(([Icon, label, view]) => <button key={label as string} type="button" onClick={() => { setActiveView(view as string); setMobileNavOpen(false) }} className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-muted-foreground hover:bg-muted"><Icon className="size-4" /><span>{label as string}</span></button>)}</nav></div>}
-<div className="grid min-h-[calc(100vh-2rem)] grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px]">
-<div className="min-w-0 p-5 md:p-8">
-              <div className="mx-auto max-w-6xl space-y-8">
-            {/* Header */}
-            <div className="flex flex-col gap-5 border-b border-border/70 pb-7 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">Workspace / {activeView === "funding" ? "Auto-Funding" : activeView === "mint" ? "Minting" : "Wallets"}</p>
-                <h1 className="text-3xl font-semibold tracking-[-0.04em] md:text-4xl">{activeView === "funding" ? "Auto-Funding" : activeView === "mint" ? "Minting" : "Wallet workspace"}<span className="text-muted-foreground">.</span></h1>
-                <p className="mt-2 text-sm text-muted-foreground">Manage wallet operations and credential mints from one place.</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-            <span className="hidden rounded-full border border-border bg-muted/40 px-3 py-1.5 text-xs font-medium sm:inline-flex">Celo</span>
-            <button type="button" aria-label="Toggle theme" className="hidden size-8 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:inline-flex"><Moon className="size-4" /></button>
-            <button type="button" aria-label="Notifications" className="hidden size-8 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:inline-flex"><Bell className="size-4" /></button>
-            {connectedAddress ? (
-              <div className="flex items-center gap-2">
-                <div className="text-sm text-muted-foreground">
-                  Connected: {connectedAddress.slice(0, 6)}...{connectedAddress.slice(-4)}
-                </div>
-                  <Button variant="outline" disabled className="gap-2"><span className="size-2 rounded-full bg-emerald-500" />{connectedAddress.slice(0, 6)}...{connectedAddress.slice(-4)}</Button>
-              </div>
-            ) : (
-              <Button onClick={connectWallet} className="bg-primary hover:bg-primary/90">
-                Connect Wallet
+    <AppShell
+      activeView={activeView}
+      onNavigate={setActiveView}
+      userEmail={userEmail}
+      onLogout={handleLogout}
+      chainSelector={<ChainSelector chains={CHAINS} value={activeChain.id} onChange={setNetworkId} />}
+      walletButton={<ConnectWalletButton connectedAddress={connectedAddress} onConnect={connectWallet} />}
+    >
+      <div className="space-y-6 sm:space-y-8">
+        <PageHeader
+          title={page.title}
+          subtitle={page.subtitle}
+          actions={
+            activeView === "dashboard" ? (
+              <Button onClick={() => setActiveView("wallets")}>
+                <Plus aria-hidden="true" />
+                Generate wallets
               </Button>
+            ) : undefined
+          }
+        />
+
+        {/* Dashboard */}
+        {activeView === "dashboard" && (
+          <div className="space-y-6">
+            <section aria-label="Overview" className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+              {statCards}
+            </section>
+
+            <div className="grid items-start gap-6 lg:grid-cols-5">
+              <div className="lg:col-span-3">
+                <TransactionHistory
+                  transactions={transactions}
+                  chain={activeChain}
+                  limit={5}
+                  title="Recent Transactions"
+                />
+              </div>
+              <Card className="gap-0 py-0 lg:col-span-2">
+                <CardHeader className="border-b px-5 py-5">
+                  <CardTitle>Quick actions</CardTitle>
+                  <CardDescription>Jump to the next step.</CardDescription>
+                </CardHeader>
+                <CardContent className="p-2">
+                  <ul>
+                    {quickActions.map(({ view, icon: Icon, title, description }) => (
+                      <li key={view}>
+                        <button
+                          type="button"
+                          onClick={() => setActiveView(view)}
+                          className="group flex w-full items-center gap-3 rounded-lg p-3 text-left transition-colors duration-150 hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/25 focus-visible:outline-none"
+                        >
+                          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground group-hover:bg-card">
+                            <Icon className="size-4" aria-hidden="true" />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-sm font-medium">{title}</span>
+                            <span className="block text-xs text-muted-foreground">{description}</span>
+                          </span>
+                          <ArrowRight className="size-4 text-muted-foreground" aria-hidden="true" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        )}
+
+        {/* Wallets */}
+        {activeView === "wallets" && (
+          <div className="space-y-6">
+            <div className="grid items-start gap-6 lg:grid-cols-3">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Generate Wallets</CardTitle>
+                  <CardDescription>Create a fresh batch of wallets.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="wallet-count">Number of Wallets</Label>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        aria-label="Fewer wallets"
+                        onClick={() => setGeneratedCount(Math.min(100, Math.max(1, generatedCount - 1)))}
+                        disabled={isGenerating || generatedCount <= 1}
+                      >
+                        <Minus aria-hidden="true" />
+                      </Button>
+                      <Input
+                        id="wallet-count"
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={generatedCount}
+                        onChange={(e) => setGeneratedCount(Math.min(100, Math.max(1, Number(e.target.value))))}
+                        disabled={isGenerating}
+                        className="text-center tabular-nums"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        aria-label="More wallets"
+                        onClick={() => setGeneratedCount(Math.min(100, Math.max(1, generatedCount + 1)))}
+                        disabled={isGenerating || generatedCount >= 100}
+                      >
+                        <Plus aria-hidden="true" />
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Between 1 and 100 wallets.</p>
+                  </div>
+                  <Button onClick={generateWallets} disabled={isGenerating} className="w-full">
+                    {isGenerating ? "Generating..." : `Generate ${generatedCount} Wallets`}
+                  </Button>
+                </CardContent>
+              </Card>
+
+              <section aria-label="Wallet stats" className="grid grid-cols-2 gap-3 sm:gap-4 lg:col-span-2">
+                {statCards}
+              </section>
+            </div>
+
+            {!hydrated ? (
+              <WalletManagement wallets={[]} onWalletsUpdate={handleUpdateWallets} loading nativeSymbol={activeChain.nativeSymbol} />
+            ) : wallets.length > 0 ? (
+              <WalletManagement
+                wallets={wallets}
+                onWalletsUpdate={handleUpdateWallets}
+                nativeSymbol={activeChain.nativeSymbol}
+              />
+            ) : (
+              <Card>
+                <CardContent>
+                  <EmptyState
+                    icon={WalletCards}
+                    title="No wallets yet"
+                    description="Choose how many wallets you need, then generate them. They are saved in this browser."
+                  />
+                </CardContent>
+              </Card>
             )}
           </div>
-        </div>
+        )}
 
-        <section className="grid grid-cols-2 gap-3 md:grid-cols-4" aria-label="Wallet overview">
-          {[
-            [WalletCards, "Total wallets", wallets.length, "Wallets generated"],
-            [CheckCircle, "Funded wallets", fundedWalletCount, "Ready to mint"],
-            [Sparkles, "Total mints", totalMints, "Across all wallets"],
-            [Fuel, "Total balance", `${wallets.reduce((sum, wallet) => sum + Number(wallet.balance || 0), 0).toFixed(2)} CELO`, "Available balance"],
-          ].map(([Icon, label, value, helper]) => {
-            const StatIcon = Icon as LucideIcon
-            return <Card key={label as string} className="border-border/70 bg-card shadow-[0_8px_24px_rgba(18,18,18,0.03)]"><CardContent className="p-4 md:p-5"><div className="mb-5 flex items-center justify-between"><span className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">{label as string}</span><StatIcon className="size-4 text-muted-foreground" /></div><p className="text-2xl font-semibold tracking-[-0.04em] md:text-3xl">{value as string | number}</p><p className="mt-1 text-xs text-muted-foreground">{helper as string}</p></CardContent></Card>
-          })}
-        </section>
-
-        <Card className="border-border/70 bg-card shadow-none">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0"><div><CardTitle className="text-base">Quick actions</CardTitle><CardDescription>Start a common wallet operation.</CardDescription></div><ArrowUpRight className="size-4 text-muted-foreground" /></CardHeader>
-          <CardContent className="grid gap-2 p-4 pt-0 sm:grid-cols-3"><Button variant="outline" className="justify-start gap-2" onClick={() => setActiveView("wallets")}><Plus className="size-4" />Generate wallets</Button><Button variant="outline" className="justify-start gap-2" onClick={() => setActiveView("funding")}><Fuel className="size-4" />Fund wallets</Button><Button variant="outline" className="justify-start gap-2" onClick={() => setActiveView("mint")}><Sparkles className="size-4" />Mint NFTs</Button></CardContent>
-        </Card>
-
-        <Tabs value={activeView} onValueChange={setActiveView} className="w-full">
-          <TabsList className="sr-only" aria-label="Workspace views">
-            <TabsTrigger value="wallets">Wallets</TabsTrigger>
-            <TabsTrigger value="funding">Auto-Funding</TabsTrigger>
-            <TabsTrigger value="mint">Minting</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="wallets" className="space-y-6">
-            <Card className="border-border/70 bg-card shadow-[0_8px_24px_rgba(18,18,18,0.03)]">
-              <CardHeader><p className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">Wallets / New batch</p>
-                <CardTitle className="text-xl tracking-[-0.03em]">Generate wallets</CardTitle><CardDescription>Create a secure batch for your next campaign.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <label htmlFor="wallet-count" className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">Number of wallets</label>
-                  <Input
-                    id="wallet-count"
-                    type="number"
-                    min="1"
-                    max="100"
-                    value={generatedCount}
-                    onChange={(e) => setGeneratedCount(Math.min(100, Math.max(1, Number(e.target.value))))}
-                    disabled={isGenerating}
-                  />
-                </div>
-                <Button onClick={generateWallets} disabled={isGenerating} className="w-full">
-                  {isGenerating ? "Generating..." : `Generate ${generatedCount} Wallets`}
-                </Button>
-              </CardContent>
-            </Card>
-
-            {wallets.length > 0 && <WalletManagement wallets={wallets} onWalletsUpdate={handleUpdateWallets} />}
-          </TabsContent>
-
-          <TabsContent value="funding" className="space-y-6">
-            {wallets.length > 0 && <AutoFundingSection wallets={wallets} onWalletsUpdate={handleUpdateWallets} />}
-            {wallets.length === 0 && (
-              <Alert>
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>Generate wallets first before auto-funding</AlertDescription>
-              </Alert>
-            )}
-          </TabsContent>
-
-          <TabsContent value="mint" className="space-y-6">
-            <Card className="border-border/70 bg-card shadow-[0_8px_24px_rgba(18,18,18,0.03)]">
-              <CardHeader>
-                <CardTitle>Smart Contract Configuration</CardTitle>
-                <CardDescription>Enter your NFT contract addresses</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Contract Address</label>
-                  <div className="flex flex-col gap-2">
-                    <Input
-                      placeholder="0x97161a87229d3A8E0Bd2Fbcd408eE6c9f65823ae"
-                      value={contractAddress}
-                      onChange={(e) => handleContractAddressChange(e.target.value)}
-                      className="font-mono text-sm"
-                    />
-                    <div className="text-xs text-muted-foreground p-2 bg-secondary/50 rounded">
-                      Enter any contract address - no verification needed
-                    </div>
-                  </div>
-                </div>
-
-                <Alert className="border-blue-500/50 bg-blue-500/10">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>You can update the contract address at any time before minting</AlertDescription>
-                </Alert>
-              </CardContent>
-            </Card>
-
-            {/* Mint Section */}
-            <Card className="border-border/70 bg-card shadow-none">
-              <CardHeader>
-                <CardTitle>Mint NFTs</CardTitle>
-                <CardDescription>Mint NFTs to all wallets</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2 p-3 rounded bg-secondary/50 border border-border/50">
-                  <p className="text-sm font-medium">Status:</p>
-                  <p className="text-sm">
-                    <span className="font-semibold">{wallets.length}</span> wallets total
-                  </p>
-                  <p className="text-sm">
-                    <span className="font-semibold">{fundedWalletCount}</span> funded wallets
-                  </p>
-                  <p className="text-sm">
-                    Contract:{" "}
-                    <span className="font-mono text-xs">
-                      {contractAddress ? `${contractAddress.slice(0, 10)}...${contractAddress.slice(-8)}` : "Not set"}
-                    </span>
-                  </p>
-                </div>
-
-                <div className="flex gap-2">
-                  <Button
-                    onClick={handleMint}
-                    disabled={isMinting || wallets.length === 0 || !contractAddress}
-                    className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
-                  >
-                    {isMinting ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Minting...
-                      </>
-                    ) : (
-                      "Start Minting All Wallets"
-                    )}
-                  </Button>
-                  {isMinting && (
-                    <Button onClick={stopMinting} variant="destructive" className="gap-2">
-                      <X className="w-4 h-4" />
-                      Stop
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-            {/* Transaction history section - existing code ... */}
+        {/* Auto-Funding */}
+        {activeView === "funding" &&
+          (wallets.length > 0 ? (
+            <AutoFundingSection
+              wallets={wallets}
+              onWalletsUpdate={handleUpdateWallets}
+              nativeSymbol={activeChain.nativeSymbol}
+              chainName={activeChain.name}
+            />
+          ) : (
             <Card>
-              <CardHeader>
-                <CardTitle>Transaction History ({transactions.length})</CardTitle>
-              </CardHeader>
               <CardContent>
-                {transactions.length === 0 ? (
-                  <div className="text-center py-8">
-                    <p className="text-muted-foreground text-sm">No transactions yet</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {transactions.map((tx, i) => (
-                      <div
-                        key={i}
-                        className="p-3 sm:p-4 rounded bg-secondary/50 border border-border/50 flex items-start gap-3 hover:bg-secondary/75 transition-colors"
-                      >
-                        <div className="mt-1 flex-shrink-0">
-                          {tx.status === "success" && <CheckCircle className="w-5 h-5 text-green-500" />}
-                          {tx.status === "pending" && <Clock className="w-5 h-5 text-yellow-500 animate-spin" />}
-                          {tx.status === "failed" && <AlertCircle className="w-5 h-5 text-red-500" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs sm:text-sm font-mono break-all text-foreground">{tx.hash}</p>
-                          <div className="flex flex-wrap gap-2 mt-1 text-xs">
-                            <span className="text-muted-foreground">{new Date(tx.timestamp).toLocaleTimeString()}</span>
-                            <span
-                              className={
-                                tx.status === "success"
-                                  ? "text-green-400"
-                                  : tx.status === "pending"
-                                    ? "text-yellow-400"
-                                    : "text-red-400"
-                              }
-                            >
-                              {tx.status.toUpperCase()}
-                            </span>
-                          </div>
-                          <p className="text-xs font-mono text-muted-foreground mt-1 break-all">
-                            {tx.wallet.slice(0, 10)}...{tx.wallet.slice(-8)}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <EmptyState
+                  icon={Fuel}
+                  title="Generate wallets first before auto-funding"
+                  description="Auto-funding sends gas to every wallet in your batch."
+                  action={
+                    <Button variant="outline" onClick={() => setActiveView("wallets")}>
+                      Go to Wallets
+                    </Button>
+                  }
+                />
               </CardContent>
             </Card>
-          </TabsContent>
-        </Tabs>
+          ))}
 
-        {/* Batch Management Section - Kept for now, could be refactored */}
-        <section className="space-y-4 mt-8">
-          <div><p className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">Workspace / Batches</p><h2 className="mt-1 text-2xl font-semibold tracking-[-0.04em]">Wallet batches</h2><p className="mt-1 text-sm text-muted-foreground">Save and reuse generated wallet groups.</p></div>
+        {/* Minting */}
+        {activeView === "mint" && (
+          <MintingSection
+            chain={activeChain}
+            contractAddress={contractAddress}
+            onContractAddressChange={handleContractAddressChange}
+            walletCount={wallets.length}
+            fundedCount={fundedWalletCount}
+            walletConnected={Boolean(signer)}
+            isMinting={isMinting}
+            onMint={handleMint}
+            onStop={stopMinting}
+            transactions={transactions}
+          />
+        )}
 
-          {/* Load Existing Batch */}
-          {batches.length > 0 && (
-            <Card className="border-border/70 bg-card shadow-none">
-              <CardHeader>
-                <CardTitle>Load Saved Batch</CardTitle>
-                <CardDescription>Reuse previously generated wallet batches</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {batches.map((batch) => (
-                    <div
-                      key={batch.id}
-                      className={`p-4 border rounded-lg cursor-pointer transition ${
-                        selectedBatchId === batch.id
-                          ? "border-primary bg-primary/10"
-                          : "border-border hover:border-primary/50"
-                      }`}
-                      onClick={() => loadBatchFromDB(batch.id)}
-                    >
-                      <h3 className="font-semibold">{batch.name}</h3>
-                      <p className="text-sm text-muted-foreground">{batch.walletCount} wallets</p>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        {new Date(batch.createdAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+        {/* Transactions */}
+        {activeView === "transactions" && <TransactionHistory transactions={transactions} chain={activeChain} />}
 
-          {/* Save Batch */}
-          {wallets.length > 0 && !selectedBatchId && (
-            <Card className="border-border/70 bg-card shadow-none">
-              <CardHeader>
-                <CardTitle>Save Current Batch</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Batch Name</label>
-                  <input
-                    type="text"
-                    value={batchName}
-                    onChange={(e) => setBatchName(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg bg-background"
-                    placeholder="e.g., Marketing Campaign Batch 1"
-                  />
-                </div>
-                <Button onClick={saveBatchToDB} disabled={isSavingBatch} className="w-full">
-                  {isSavingBatch ? "Saving..." : "Save Batch"}
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-        </section>
-              </div>
-</div>
-<div className="hidden min-w-0 border-l border-border/70 bg-muted/10 p-5 xl:block">
-              <aside className="sticky top-5 space-y-5" aria-label="Workbench inspector">
-                <div className="flex items-center justify-between border-b border-border/70 pb-4">
-                  <div className="flex items-center gap-2"><PanelRight className="size-4" /><p className="text-sm font-semibold">Inspector</p></div>
-                  <SlidersHorizontal className="size-4 text-muted-foreground" />
-                </div>
-                <Card className="border-border/70 bg-card shadow-none">
-                  <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-sm"><Activity className="size-4 text-muted-foreground" />Workspace activity</CardTitle></CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex items-end justify-between"><span className="text-xs text-muted-foreground">Generated wallets</span><span className="text-2xl font-semibold tracking-tight">{wallets.length}</span></div>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-foreground transition-all" style={{ width: `${Math.min(100, wallets.length)}%` }} /></div>
-                    <div className="grid grid-cols-2 gap-3 border-t border-border/70 pt-4"><div><p className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Funded</p><p className="mt-1 text-lg font-medium">{fundedWalletCount}</p></div><div><p className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Mints</p><p className="mt-1 text-lg font-medium">{totalMints}</p></div></div>
-                  </CardContent>
-                </Card>
-                <Card className="border-border/70 bg-card shadow-none">
-                  <CardHeader className="pb-3"><CardTitle className="text-sm">Workspace context</CardTitle><CardDescription>Operational context for your current workspace.</CardDescription></CardHeader>
-                  <CardContent><p className="text-xs leading-5 text-muted-foreground">Keep your wallet data in focus while monitoring operational context alongside it.</p></CardContent>
-                </Card>
-              </aside>
-</div>
-</div>
-        </main>
+        {/* Batches */}
+        {activeView === "batches" && (
+          <BatchesSection
+            batches={batches}
+            selectedBatchId={selectedBatchId}
+            walletCount={wallets.length}
+            batchName={batchName}
+            onBatchNameChange={setBatchName}
+            isSavingBatch={isSavingBatch}
+            onSaveBatch={saveBatchToDB}
+            onLoadBatch={loadBatchFromDB}
+          />
+        )}
       </div>
-    </div>
+    </AppShell>
   )
 }

@@ -2,16 +2,17 @@ import type React from "react"
 import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
-import { Toaster } from "sonner"
+import { ThemeProvider } from "@/components/theme-provider"
+import { AppToaster } from "@/components/app/app-toaster"
 import "./globals.css"
 
-const _geist = Geist({ subsets: ["latin"] })
-const _geistMono = Geist_Mono({ subsets: ["latin"] })
+const geistSans = Geist({ subsets: ["latin"], variable: "--font-geist-sans" })
+const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono" })
 
 export const metadata: Metadata = {
   title: "Mintition - NFT Bulk Minting Dashboard",
   description:
-    "Automated NFT minting platform for Celo blockchain with bulk wallet generation and credential management",
+    "Bulk wallet generation, auto-funding and NFT credential minting across EVM chains",
   generator: "v0.app",
   icons: {
     icon: [
@@ -39,9 +40,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`font-sans antialiased`}>
-        {children}
-        <Toaster position="top-right" richColors />
+      <body className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}>
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
+          {children}
+          <AppToaster />
+        </ThemeProvider>
         <Analytics />
       </body>
     </html>
