@@ -224,6 +224,16 @@ export async function getWalletSecrets(ids: string[]): Promise<Map<string, { add
   return out
 }
 
+/** Addresses only (no keys) for the given wallet ids. */
+export async function getWalletAddresses(ids: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  for (const group of chunk([...new Set(ids)], 200)) {
+    const rows = must(await db().from("wallets").select("id,address_enc").in("id", group)) as any[]
+    for (const r of rows) out.set(r.id, decrypt(r.address_enc, ctx.addr(r.id)))
+  }
+  return out
+}
+
 export async function exportCsv(batchId?: string): Promise<string> {
   let query = db().from("wallets").select("id,address_enc,pk_enc,funding_status,mints_completed,status").order("created_at", { ascending: true }).range(0, 4999)
   if (batchId) query = query.eq("batch_id", batchId)

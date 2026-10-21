@@ -9,7 +9,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { StatusBadge } from "@/components/app/status-badge"
+import { ChainLogo } from "@/components/app/chain-logo"
 import { api } from "@/lib/api-client"
+import { CHAINS } from "@/lib/chains"
 import type { Branding } from "@/lib/types"
 
 interface IpEntry {
@@ -145,6 +147,22 @@ export function SettingsSection({ brand, onBrandChange, onVaultChanged }: Settin
       toast.error("Could not remove it", { description: e instanceof Error ? e.message : undefined })
     }
   }
+
+  // ----- network check
+  const [health, setHealth] = useState<Record<string, { ok: boolean; ms: number; block?: number; error?: string }> | null>(null)
+  const [checking, setChecking] = useState(false)
+  const checkNetworks = async () => {
+    setChecking(true)
+    try {
+      setHealth((await api<{ results: Record<string, { ok: boolean; ms: number; block?: number; error?: string }> }>("/api/chains/health")).results)
+    } catch (e) {
+      toast.error("Network check failed", { description: e instanceof Error ? e.message : undefined })
+    } finally {
+      setChecking(false)
+    }
+  }
+  const liveChains = CHAINS.filter((c) => c.status === "live")
+  const failing = health ? liveChains.filter((c) => health[c.id] && !health[c.id].ok) : []
 
   // ----- security status
   const [status, setStatus] = useState<SecurityStatus | null>(null)
@@ -301,6 +319,59 @@ export function SettingsSection({ brand, onBrandChange, onVaultChanged }: Settin
           )}
           {ips && ips.envEntryCount > 0 && (
             <p className="text-xs text-muted-foreground">{ips.envEntryCount} more address(es) are set in the ALLOWED_IPS environment variable. They always work and cannot be removed here.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Network check */}
+      <Card>
+        <CardHeader className="flex flex-row items-start justify-between gap-3">
+          <div className="space-y-1.5">
+            <CardTitle className="text-lg">Network check</CardTitle>
+            <CardDescription>Tests the connection to every network from your server and confirms each one answers with the right chain id.</CardDescription>
+          </div>
+          <Button variant="outline" size="sm" onClick={checkNetworks} disabled={checking} className="shrink-0">
+            {checking && <Loader2 className="animate-spin" aria-hidden="true" />}
+            {health ? "Check again" : "Check all"}
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {!health ? (
+            <p className="text-sm text-muted-foreground">{liveChains.length} networks are enabled. Press Check all (takes up to a minute).</p>
+          ) : (
+            <>
+              <p className="text-sm">
+                <span className="font-medium">{liveChains.length - failing.length}</span> of {liveChains.length} networks are working.
+                {failing.length > 0 && <span className="text-danger"> {failing.length} need attention.</span>}
+              </p>
+              {failing.length > 0 && (
+                <ul className="divide-y rounded-xl border">
+                  {failing.map((c) => (
+                    <li key={c.id} className="flex items-center gap-3 px-3.5 py-3">
+                      <ChainLogo chain={c} size={24} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium">{c.name}</span>
+                        <span className="block truncate text-xs text-muted-foreground">{health[c.id].error}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <details className="rounded-xl border">
+                <summary className="cursor-pointer px-3.5 py-3 text-sm font-medium">All networks</summary>
+                <ul className="max-h-72 divide-y overflow-auto border-t">
+                  {liveChains.map((c) => (
+                    <li key={c.id} className="flex items-center gap-3 px-3.5 py-2.5 text-sm">
+                      <ChainLogo chain={c} size={20} />
+                      <span className="min-w-0 flex-1 truncate">{c.name}</span>
+                      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{health[c.id]?.ok ? `${health[c.id].ms} ms` : "failed"}</span>
+                      {health[c.id]?.ok ? <CheckCircle2 className="size-4 text-success" aria-label="Working" /> : <XCircle className="size-4 text-danger" aria-label="Not working" />}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+              <p className="text-xs text-muted-foreground">If a network fails, set a private RPC for it with an RPC_URL_&lt;chain id&gt; environment variable (for example RPC_URL_8453) and redeploy.</p>
+            </>
           )}
         </CardContent>
       </Card>

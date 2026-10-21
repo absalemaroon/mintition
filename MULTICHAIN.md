@@ -1,19 +1,16 @@
-# Making Mintition multi-chain
+# Networks
 
-All the UI knows about a network lives in `lib/chains.ts`: name, native symbol, explorer, logo,
-status. The network picker, balances, funding summary, transaction links and labels read from it.
+109 of 115 networks are enabled ("live"). Each has a public RPC endpoint in `lib/chains.ts` (PUBLIC_RPC). Six have none yet
+and stay "soon": Evmos, Zircuit, Katana, KardiaChain, Velas, Shiden.
 
-Celo is the only `live` chain. The other 114 are `soon`: shown in the picker, not selectable.
-Logos: run `node scripts/fetch-chain-logos.mjs` once (needs internet). Chains without a downloaded
-logo show a coloured monogram.
+* The RPC list was written from each network's public documentation, not tested from here. Use **Settings > Network check**
+  after deploying. The worker also asks every node for its chain id and refuses a mismatch.
+* To override or add an RPC without editing code: set `RPC_URL_<chainId>` in your environment variables and redeploy.
+  To make a "soon" chain live, add its entry to PUBLIC_RPC in `lib/chains.ts`.
+* Add the RPC host to `CSP_EXTRA_CONNECT` only if the browser must call it. Server-side minting, trading and transfers do not need it.
+  (Browser-side auto-funding in `lib/auto-funding.ts` still uses the Celo RPC: see "Not done yet".)
+* Logos: `node scripts/fetch-chain-logos.mjs`.
 
-## Enabling a chain (for example Base)
-1. Verify its chain id, native symbol and explorer on https://chainlist.org. Entries with an empty
-   `explorerUrl` have not been checked yet.
-2. In `lib/chains.ts` set `status: "live"` and add `rpcUrl` (or set the `RPC_URL_<chainId>` env var).
-3. Add the RPC host to `CSP_EXTRA_CONNECT` (browser auto-funding talks to it directly).
-4. Funding in the browser: `lib/auto-funding.ts` and `lib/contract-config.ts` still point at
-   `CELO_RPC_URL`. Make them use the selected chain's RPC.
-5. Minting needs no change: the worker reads the chain from each job (`mint_jobs.chain_id`) and its
-   RPC from the registry or `RPC_URL_<chainId>`. Your NFT contract must exist on that chain and expose
-   the same `mint(address,string)` function as the ABI in `lib/contract-config.ts`.
+## Not done yet
+* Solana and other non-EVM chains.
+* Auto-funding (browser) on chains other than Celo.

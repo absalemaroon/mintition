@@ -83,7 +83,10 @@ export function TransactionHistory({
               <tbody>
                 {rows.map((tx, i) => (
                   <tr key={i} className="border-t transition-colors duration-150 hover:bg-muted/50">
-                    <td className="px-5 py-3"><HashCell hash={tx.hash} chain={chain} /></td>
+                    <td className="px-5 py-3">
+                      <HashCell hash={tx.hash} chain={chain} />
+                      {tx.detail && <span className="mt-0.5 block max-w-72 truncate text-xs text-muted-foreground" title={tx.detail}>{tx.detail}</span>}
+                    </td>
                     <td className="px-5 py-3 font-mono text-xs">{shortAddress(tx.wallet, 10, 8)}</td>
                     <td className="px-5 py-3">
                       <StatusBadge tone={toneForStatus(tx.status)}>{labelForStatus(tx.status)}</StatusBadge>
@@ -107,6 +110,7 @@ export function TransactionHistory({
                   <span className="text-xs text-muted-foreground tabular-nums">{new Date(tx.timestamp).toLocaleTimeString()}</span>
                 </div>
                 <HashCell hash={tx.hash} chain={chain} />
+                {tx.detail && <p className="text-xs text-muted-foreground">{tx.detail}</p>}
                 <p className="font-mono text-xs text-muted-foreground">{shortAddress(tx.wallet, 10, 8)}</p>
                 {tx.error && <p className="text-xs text-muted-foreground">{tx.error}</p>}
               </li>

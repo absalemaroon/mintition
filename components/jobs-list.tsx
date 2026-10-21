@@ -52,7 +52,13 @@ export function JobsList({ jobs, onCancel, cancellingId, emptyHint }: JobsListPr
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">{job.name}</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  {when(job)} · <span className="font-mono">{shortAddress(job.contract, 8, 6)}</span>
+                  {job.detail} · {when(job)}
+                  {job.contract && job.contract !== "native" && (
+                    <>
+                      {" · "}
+                      <span className="font-mono">{shortAddress(job.contract, 8, 6)}</span>
+                    </>
+                  )}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">

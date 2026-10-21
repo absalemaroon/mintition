@@ -22,6 +22,9 @@ If it complains about permission on `auth.users`, make sure the editor runs as t
 Then Authentication > Providers/Settings: turn **off** "Allow new users to sign up" (the database already refuses
 extra users, this is a second lock).
 
+## 2b. Trading tables
+Also run `scripts/004_trading.sql` (adds buy, sell and transfer jobs). See `TRADING.md`.
+
 ## 3. Start the background worker
 Enable the `pg_cron` and `pg_net` extensions (Database > Extensions), edit the two placeholders in
 `scripts/003_schedule_worker.sql` (your `CRON_SECRET` and your app URL) and run it. From then on Supabase calls
@@ -34,8 +37,12 @@ Enable the `pg_cron` and `pg_net` extensions (Database > Extensions), edit the t
   convert wallets that older versions stored in plain text. Open Wallets: if it offers to move wallets saved in
   this browser, accept (it erases the browser copy afterwards).
 
-## 5. Logos for the chain picker (optional, on your computer)
-`node scripts/fetch-chain-logos.mjs`, then commit `public/chains` and `lib/chain-logos.json`.
+## 5. Check the networks
+Settings > Network check > Check all. It tests every enabled network's RPC from your server. If one fails, set
+`RPC_URL_<chainId>` (for example `RPC_URL_8453`) to a private RPC and redeploy.
+
+## 6. Logos (optional)
+See `TERMUX.md`. Cosmetic only.
 
 ## What is encrypted, and what is not
 Encrypted (AES-256-GCM, key only on your server): private keys, wallet addresses, batch names, contract

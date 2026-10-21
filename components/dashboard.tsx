@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { ethers } from "ethers"
 import { toast } from "sonner"
-import { ArrowRight, CheckCircle2, Fuel, Loader2, Minus, Plus, ShieldAlert, Sparkles, WalletCards } from "lucide-react"
+import { ArrowLeftRight, ArrowRight, CheckCircle2, Fuel, Loader2, Minus, Plus, ShieldAlert, Sparkles, WalletCards } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { api } from "@/lib/api-client"
 import { CHAINS, DEFAULT_CHAIN_ID, getChain } from "@/lib/chains"
@@ -28,6 +28,7 @@ import { BatchesSection } from "./batches-section"
 import { MintingSection } from "./minting-section"
 import { SchedulerSection, type NewJobInput } from "./scheduler-section"
 import { SettingsSection } from "./settings-section"
+import { TradeSection } from "./trade-section"
 import { TransactionHistory } from "./transaction-history"
 import { WalletManagement } from "./wallet-management"
 
@@ -279,6 +280,19 @@ export default function Dashboard() {
     }
   }
 
+  /** Buy / sell / transfer jobs from the Trade page (the payload is built and checked there). */
+  const submitTradeJob = async (payload: Record<string, unknown>): Promise<boolean> => {
+    try {
+      await api("/api/jobs", { method: "POST", json: payload })
+      await Promise.all([refreshJobs(), refreshTransactions()])
+      toast.success(payload.runAt ? "Scheduled" : "Started", { description: "It runs on the server. You can close this page." })
+      return true
+    } catch (error) {
+      toast.error("Could not start", { description: error instanceof Error ? error.message : undefined })
+      return false
+    }
+  }
+
   const startMinting = async () => {
     if (!selectedBatchId) {
       toast.error("No wallets selected", { description: "Generate wallets or load a batch first" })
@@ -322,6 +336,7 @@ export default function Dashboard() {
     { view: "wallets", icon: Plus, title: "Generate wallets", description: "Create a fresh batch" },
     { view: "funding", icon: Fuel, title: "Fund wallets", description: "Send gas to every wallet" },
     { view: "mint", icon: Sparkles, title: "Mint NFTs", description: "Mint from every wallet, in parallel" },
+    { view: "trade", icon: ArrowLeftRight, title: "Buy, sell or transfer", description: "Trade any token with your wallets" },
   ]
 
   const legacyBanners = (
@@ -535,10 +550,24 @@ export default function Dashboard() {
             onConcurrencyChange={setConcurrency}
             isStarting={isStartingMint}
             onMint={startMinting}
-            jobs={jobs}
+            jobs={jobs.filter((j) => j.kind === "mint")}
             onCancel={cancelJob}
             cancellingId={cancellingId}
             transactions={transactions}
+          />
+        )}
+
+        {/* Trade */}
+        {activeView === "trade" && (
+          <TradeSection
+            chain={activeChain}
+            batches={batches}
+            selectedBatchId={selectedBatchId}
+            wallets={wallets}
+            onCreate={submitTradeJob}
+            jobs={jobs}
+            onCancel={cancelJob}
+            cancellingId={cancellingId}
           />
         )}
 

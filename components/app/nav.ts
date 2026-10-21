@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react"
-import { LayoutDashboard, WalletCards, Fuel, Sparkles, Receipt, Layers3, CalendarClock, Settings } from "lucide-react"
+import { LayoutDashboard, WalletCards, Fuel, Sparkles, Receipt, Layers3, CalendarClock, Settings, ArrowLeftRight } from "lucide-react"
 
-export type ViewId = "dashboard" | "wallets" | "funding" | "mint" | "schedule" | "transactions" | "batches" | "settings"
+export type ViewId = "dashboard" | "wallets" | "funding" | "mint" | "trade" | "schedule" | "transactions" | "batches" | "settings"
 
 export interface NavItem {
   id: ViewId
@@ -39,6 +39,13 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Sparkles,
     title: "Minting",
     subtitle: "Point at a contract and mint a credential from every wallet.",
+  },
+  {
+    id: "trade",
+    label: "Trade",
+    icon: ArrowLeftRight,
+    title: "Trade",
+    subtitle: "Buy, sell and move tokens with your wallet batches, now or on a schedule.",
   },
   {
     id: "schedule",

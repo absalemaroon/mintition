@@ -21,6 +21,8 @@ export interface Transaction {
   status: "pending" | "success" | "failed"
   wallet: string
   chainId?: number
+  kind?: JobKind
+  detail?: string
   tokenId?: string
   error?: string
   jobId?: string | null
@@ -35,8 +37,12 @@ export interface BatchInfo {
   createdAt: string
 }
 
+export type JobKind = "mint" | "buy" | "sell" | "transfer"
+
 export interface JobView {
   id: string
+  kind: JobKind
+  detail: string
   name: string
   chainId: number
   contract: string
@@ -72,4 +78,60 @@ export interface NFTMetadata {
     trait_type: string
     value: string
   }>
+}
+
+export interface PairView {
+  dex: string
+  pairAddress: string
+  url: string
+  quoteSymbol: string
+  priceUsd: number | null
+  priceNative: number | null
+  liquidityUsd: number | null
+  volume24h: number | null
+  volume1h: number | null
+  change24h: number | null
+  change1h: number | null
+  buys24h: number | null
+  sells24h: number | null
+  fdv: number | null
+  marketCap: number | null
+  createdAt: number | null
+}
+
+export interface TokenInfoView {
+  address: string
+  chainId: number
+  isContract: boolean
+  name: string | null
+  symbol: string | null
+  decimals: number | null
+  totalSupply: string | null
+  image: string | null
+  websites: { label: string; url: string }[]
+  socials: { type: string; url: string }[]
+  market: PairView | null
+  pairs: PairView[]
+  elsewhere: string[]
+  warnings: string[]
+}
+
+export interface BalanceRow {
+  walletId: string
+  address: string
+  native: string
+  token: string | null
+  error?: boolean
+}
+
+export interface QuotePreview {
+  side: "buy" | "sell"
+  router: string
+  symbol: string
+  amountIn: string
+  expectedOut: string
+  minOut: string
+  priceImpactPct: number | null
+  inSymbol: string
+  outSymbol: string
 }

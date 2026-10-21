@@ -37,7 +37,7 @@ interface SchedulerSectionProps {
 }
 
 /** A value for <input type="datetime-local"> ten minutes from now, in the device's time zone. */
-function defaultStart(): string {
+export function defaultStart(): string {
   const d = new Date(Date.now() + 10 * 60_000)
   d.setSeconds(0, 0)
   const pad = (n: number) => String(n).padStart(2, "0")
