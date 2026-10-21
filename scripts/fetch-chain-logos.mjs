@@ -14,7 +14,12 @@ import { fileURLToPath } from "node:url"
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const outDir = path.join(root, "public", "chains")
 const RAW = "https://raw.githubusercontent.com/ethereum-lists/chains/master/_data"
-const IPFS_GATEWAYS = ["https://ipfs.io/ipfs/", "https://dweb.link/ipfs/", "https://cloudflare-ipfs.com/ipfs/"]
+const IPFS_GATEWAYS = [
+  "https://4everland.io/ipfs/", 
+  "https://gateway.pinata.cloud/ipfs/", 
+  "https://nftstorage.link/ipfs/", 
+  "https://dweb.link/ipfs/"
+]
 const MAX_BYTES = 300 * 1024
 
 const source = await readFile(path.join(root, "lib", "chains.ts"), "utf8")
@@ -56,7 +61,7 @@ const queue = [...ids]
 await mkdir(outDir, { recursive: true })
 
 await Promise.all(
-  Array.from({ length: 5 }, async () => {
+  Array.from({ length: 2 }, async () => {
     while (queue.length) {
       const id = queue.shift()
       try {
