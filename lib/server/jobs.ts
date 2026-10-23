@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/server-admin"
 import { decrypt, decryptJson, encrypt, encryptJson } from "@/lib/security/crypto"
 import { ApiError } from "@/lib/security/guard"
 import { getChain, isLiveChain } from "@/lib/chains"
+import { isSolanaAddress } from "@/lib/server/solana/base58"
 import { listWallets } from "@/lib/server/vault"
 
 const db = () => createAdminClient() as any
@@ -114,11 +115,15 @@ export type CreateJobInput = Common &
         amountWei?: string
         amountDisplay?: string
         symbol?: string
-        destination: { type: "address"; address: string } | { type: "batch"; batchId: string; pairing: "sequential" | "random" }
+        destination: { type: "address"; address: string } | { type: "batch"; batchId: string; pairing: "sequential" | "random" | "all" }
       }
   )
 
-const checksum = (address: string, what: string) => {
+const checksum = (address: string, what: string, family: "evm" | "solana" = "evm") => {
+  if (family === "solana") {
+    if (!isSolanaAddress(address)) throw new ApiError(400, `Enter a valid Solana ${what} address`)
+    return address
+  }
   if (!ethers.isAddress(address)) throw new ApiError(400, `Enter a valid ${what} address`)
   return ethers.getAddress(address.toLowerCase())
 }
@@ -136,7 +141,7 @@ const positiveWei = (value: string | undefined, what: string) => {
 /** Decides which destination each source wallet sends to. Pure, so it can be tested. */
 export function planTransfers(
   sources: { id: string; address: string }[],
-  destination: { type: "address"; address: string } | { type: "batch"; wallets: { address: string }[]; pairing: "sequential" | "random"; sameBatch: boolean },
+  destination: { type: "address"; address: string } | { type: "batch"; wallets: { address: string }[]; pairing: "sequential" | "random" | "all"; sameBatch: boolean },
   rand: (max: number) => number = randomInt,
 ): { sourceId: string; to: string }[] {
   if (destination.type === "address") return sources.map((s) => ({ sourceId: s.id, to: destination.address })).filter((p) => p.to.toLowerCase() !== sources.find((s) => s.id === p.sourceId)!.address.toLowerCase())
@@ -145,6 +150,10 @@ export function planTransfers(
   if (dest.length === 0) throw new ApiError(400, "The destination batch has no wallets")
   if (destination.sameBatch && sources.length < 2) throw new ApiError(400, "A batch needs at least 2 wallets to send between its own wallets")
 
+  if (destination.pairing === "all") {
+    // Every source sends to every destination wallet (for example one funded wallet spreading gas to a whole batch).
+    return sources.flatMap((s) => dest.filter((d) => d.address.toLowerCase() !== s.address.toLowerCase()).map((d) => ({ sourceId: s.id, to: d.address })))
+  }
   let order = dest.map((_, i) => i)
   if (destination.pairing === "random") {
     for (let i = order.length - 1; i > 0; i--) {
@@ -173,26 +182,31 @@ export async function createJob(input: CreateJobInput): Promise<JobSummary> {
     runAt = Math.max(parsed, now)
   }
 
+  const chainInfo = getChain(String(input.chainId))
+  const family = chainInfo.family
+  if (family === "solana" && input.kind === "mint") throw new ApiError(400, "NFT minting on Solana is not supported yet")
+
   const sources = await listWallets(input.batchId)
   if (sources.length === 0) throw new ApiError(400, "That batch has no wallets")
+  if (sources[0].family !== family) throw new ApiError(400, `This batch holds ${sources[0].family === "solana" ? "Solana" : "EVM"} wallets. Pick a ${family === "solana" ? "Solana" : "EVM"} batch for ${chainInfo.name}.`)
 
   let contract: string
   let params: JobParams | null = null
   let mintsPerWallet = 1
-  let metas: (string | null)[] = sources.map(() => null) // encrypted-later destination per wallet
+  let planned: { sourceId: string; to: string }[] = []
 
   if (input.kind === "mint") {
     contract = checksum(input.contractAddress, "contract")
     mintsPerWallet = input.mintsPerWallet
   } else if (input.kind === "buy") {
-    contract = checksum(input.token, "token")
+    contract = checksum(input.token, "token", family)
     positiveWei(input.amountWei, "amount")
     params = { kind: "buy", amountWei: input.amountWei, amountDisplay: input.amountDisplay.slice(0, 30), slippage: input.slippage, maxImpact: input.maxImpact, symbol: input.symbol?.slice(0, 20) }
   } else if (input.kind === "sell") {
-    contract = checksum(input.token, "token")
+    contract = checksum(input.token, "token", family)
     params = { kind: "sell", percent: input.percent, slippage: input.slippage, maxImpact: input.maxImpact, symbol: input.symbol?.slice(0, 20) }
   } else {
-    if (input.asset === "token") contract = checksum(input.token || "", "token")
+    if (input.asset === "token") contract = checksum(input.token || "", "token", family)
     else contract = "native"
     if (input.mode === "fixed") positiveWei(input.amountWei, "amount")
     params = {
@@ -205,20 +219,19 @@ export async function createJob(input: CreateJobInput): Promise<JobSummary> {
     }
     let plan: { sourceId: string; to: string }[]
     if (input.destination.type === "address") {
-      plan = planTransfers(sources, { type: "address", address: checksum(input.destination.address, "destination") })
+      plan = planTransfers(sources, { type: "address", address: checksum(input.destination.address, "destination", family) })
     } else {
       const same = input.destination.batchId === input.batchId
       const destWallets = same ? sources : await listWallets(input.destination.batchId)
+      if (destWallets[0] && destWallets[0].family !== family) throw new ApiError(400, "The destination batch holds a different kind of wallet")
       plan = planTransfers(sources, { type: "batch", wallets: destWallets, pairing: input.destination.pairing, sameBatch: same })
     }
-    const byId = new Map(plan.map((p) => [p.sourceId, p.to]))
-    metas = sources.map((s) => byId.get(s.id) ?? null)
+    planned = plan
     if (plan.length === 0) throw new ApiError(400, "Nothing to send: every wallet already is the destination")
   }
 
-  const items = sources
-    .map((w, i) => ({ w, meta: metas[i] }))
-    .filter((x) => input.kind !== "transfer" || x.meta !== null)
+  const items: { w: { id: string }; meta: string | null }[] =
+    input.kind === "transfer" ? planned.map((p) => ({ w: { id: p.sourceId }, meta: p.to })) : sources.map((w) => ({ w, meta: null }))
   const total = items.length * mintsPerWallet
   if (total > MAX_ITEMS_PER_JOB) throw new ApiError(400, `Too many items in one job (max ${MAX_ITEMS_PER_JOB})`)
 
@@ -250,8 +263,12 @@ export async function createJob(input: CreateJobInput): Promise<JobSummary> {
 
   try {
     const rows: any[] = []
+    const seen = new Map<string, number>()
     for (const { w, meta } of items) {
-      for (let seq = 1; seq <= mintsPerWallet; seq++) {
+      const base = (seen.get(w.id) ?? 0)
+      seen.set(w.id, base + mintsPerWallet)
+      for (let n = 1; n <= mintsPerWallet; n++) {
+        const seq = base + n
         const itemId = randomUUID()
         rows.push({ id: itemId, job_id: id, wallet_id: w.id, seq, meta_enc: meta ? encryptJson({ to: meta }, jobCtx.meta(itemId)) : null })
       }

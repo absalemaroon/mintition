@@ -8,6 +8,8 @@ import { getWalletSecrets } from "@/lib/server/vault"
 import { jobCtx, type JobKind, type JobParams } from "@/lib/server/jobs"
 import { ERC20_ABI, NATIVE_TOKEN_ADDRESS, chainOrThrow, getProvider } from "@/lib/server/evm"
 import { TradeError, getSwapQuote } from "@/lib/server/swap"
+import { prepareSolana, signAndCheck } from "@/lib/server/solana/trade"
+import { getBlockHeight, getSignatureStatus, sendRaw as solanaSend } from "@/lib/server/solana/rpc"
 
 /**
  * Server-side worker for every job kind: mint, buy, sell, transfer.
@@ -140,17 +142,15 @@ function parseTokenId(receipt: ethers.TransactionReceipt): string {
   return "unknown"
 }
 
-async function finishSuccess(job: Job, item: any, address: string, hash: string, receipt: ethers.TransactionReceipt) {
+async function finishSuccessGeneric(job: Job, item: any, address: string, hash: string, extra: Record<string, unknown>) {
   await setItem(item.id, { status: "success", locked_until: null, error_enc: null })
-  await saveTransaction(item, job, "success", {
-    hash,
-    wallet: address,
-    contract: job.contract,
-    blockNumber: receipt.blockNumber,
-    ...(job.kind === "mint" ? { tokenId: parseTokenId(receipt) } : {}),
-  })
+  await saveTransaction(item, job, "success", { hash, wallet: address, contract: job.contract, ...extra })
   if (job.kind === "mint") await db().rpc("increment_wallet_mints", { p_wallet_id: item.wallet_id })
   await db().rpc("finalize_job", { p_job_id: item.job_id })
+}
+
+async function finishSuccess(job: Job, item: any, address: string, hash: string, receipt: ethers.TransactionReceipt) {
+  await finishSuccessGeneric(job, item, address, hash, { blockNumber: receipt.blockNumber, ...(job.kind === "mint" ? { tokenId: parseTokenId(receipt) } : {}) })
 }
 
 async function finishFailure(job: Job, item: any, address: string, message: string, hash?: string) {
@@ -262,12 +262,62 @@ async function prepare(job: Job, item: any, signer: ethers.Wallet, provider: eth
   throw new TradeError("permanent", "Unknown job type")
 }
 
+/**
+ * One Solana action. The transaction is signed first, and its signature (which is fixed by the signed content)
+ * is saved BEFORE it is broadcast. If anything goes wrong afterwards, the same signed transaction can only ever land once.
+ * A new one is built only after the old one's blockhash has expired, so a retry can never double up.
+ */
+async function processSolanaItem(job: Job, item: any, wallet: { address: string; privateKey: string }, deadline: number) {
+  let signature = ""
+  let detail = ""
+  try {
+    const meta = item.meta_enc ? decryptJson<{ to: string }>(item.meta_enc, jobCtx.meta(item.id)) : null
+    const prepared = await prepareSolana({ kind: job.kind, contract: job.contract, params: job.params }, meta, wallet)
+    detail = prepared.detail
+    const checked = await signAndCheck(prepared, wallet)
+    signature = checked.signature
+
+    await setItem(item.id, { status: "sent", tx_enc: encrypt(signature, jobCtx.tx(item.id)), sent_at: new Date().toISOString(), nonce: prepared.lastValidBlockHeight, locked_until: null })
+    await saveTransaction(item, job, "pending", { hash: signature, wallet: wallet.address, contract: job.contract, detail })
+    try {
+      await solanaSend(checked.signedBase64)
+    } catch (error) {
+      const c = classifyError(error)
+      // A refusal on preflight means it can never land: stop here. Any other failure may have reached the network, so leave it to be confirmed by signature.
+      if (c.kind === "permanent") {
+        await finishFailure(job, item, wallet.address, c.message, signature)
+        return
+      }
+    }
+  } catch (error) {
+    const { kind, message } = classifyError(error)
+    if (signature) return // already recorded as sent
+    if (kind === "transient" && item.attempts < MAX_ATTEMPTS) {
+      await setItem(item.id, { status: "pending", locked_until: null, next_attempt_at: new Date(Date.now() + item.attempts * 10_000).toISOString(), error_enc: encrypt(message, jobCtx.err(item.id)) })
+    } else {
+      await finishFailure(job, item, wallet.address, message)
+    }
+    return
+  }
+
+  const until = Math.min(deadline - 3_000, Date.now() + 30_000)
+  while (Date.now() < until) {
+    await sleep(1_500)
+    const st = await getSignatureStatus(signature).catch(() => null)
+    if (st?.err) return finishFailure(job, item, wallet.address, `Transaction failed on chain: ${JSON.stringify(st.err).slice(0, 100)}`, signature)
+    if (st && (st.confirmationStatus === "confirmed" || st.confirmationStatus === "finalized")) return finishSuccessGeneric(job, item, wallet.address, signature, {})
+  }
+  // not confirmed yet: it stays "sent" and the next worker run confirms it
+}
+
 async function processItem(job: Job, item: any, secrets: Map<string, { address: string; privateKey: string }>, deadline: number) {
   const wallet = secrets.get(item.wallet_id)
   if (!wallet) {
     await finishFailure(job, item, "", "Wallet not found in the vault")
     return
   }
+
+  if (chainOrThrow(job.chainId).family === "solana") return processSolanaItem(job, item, wallet, deadline)
 
   let provider: ethers.JsonRpcProvider
   let tx: ethers.TransactionResponse
@@ -375,7 +425,7 @@ async function recoverStale() {
   for (const row of rows) {
     try {
       const wallet = secrets.get(row.wallet_id)
-      if (row.nonce === null || !wallet) {
+      if (row.nonce === null || !wallet || chainOrThrow(row.mint_jobs.chain_id).family === "solana") {
         await setItem(row.id, { status: "pending", locked_until: null })
         continue
       }
@@ -398,7 +448,7 @@ async function reconcileSent(deadline: number) {
   const rows = must(
     await db()
       .from("mint_job_items")
-      .select(`id,job_id,wallet_id,tx_enc,sent_at,mint_jobs(${JOB_COLUMNS})`)
+      .select(`id,job_id,wallet_id,tx_enc,sent_at,nonce,attempts,mint_jobs(${JOB_COLUMNS})`)
       .eq("status", "sent")
       .order("sent_at", { ascending: true })
       .limit(200),
@@ -415,6 +465,20 @@ async function reconcileSent(deadline: number) {
           const hash = decrypt(row.tx_enc, jobCtx.tx(row.id))
           const job = hydrateJob({ id: row.job_id, concurrency: 1, ...row.mint_jobs })
           const address = secrets.get(row.wallet_id)?.address ?? ""
+          if (chainOrThrow(job.chainId).family === "solana") {
+            const st = await getSignatureStatus(hash)
+            if (st) {
+              if (st.err) await finishFailure(job, row, address, `Transaction failed on chain: ${JSON.stringify(st.err).slice(0, 100)}`, hash)
+              else if (st.confirmationStatus === "confirmed" || st.confirmationStatus === "finalized") await finishSuccessGeneric(job, row, address, hash, {})
+            } else if (row.nonce && (await getBlockHeight()) > Number(row.nonce) + 5) {
+              // Its blockhash has expired, so this transaction can never land: a fresh attempt cannot double up.
+              if (row.attempts >= MAX_ATTEMPTS) await finishFailure(job, row, address, "Not confirmed before it expired", hash)
+              else await setItem(row.id, { status: "pending", tx_enc: null, sent_at: null, nonce: null, locked_until: null, next_attempt_at: new Date(Date.now() + 5_000).toISOString() })
+            } else if (Date.now() - Date.parse(row.sent_at) > SENT_TIMEOUT_MS) {
+              await finishFailure(job, row, address, "Not confirmed after 30 minutes. Check the transaction on the block explorer.", hash)
+            }
+            continue
+          }
           const provider = await getProvider(job.chainId)
           const receipt = await provider.getTransactionReceipt(hash)
           if (receipt) {

@@ -20,6 +20,8 @@ interface AppShellProps {
   onLogout: () => void
   chainSelector: ReactNode
   walletButton: ReactNode
+  /** Status strip shown above the page (desktop). */
+  statusBar?: ReactNode
   children: ReactNode
 }
 
@@ -63,7 +65,12 @@ function SidebarBody({ brand, activeView, onNavigate, userEmail, onLogout, colla
     <div className="flex h-full flex-col gap-5 p-3">
       <div className={cn("flex items-center gap-2.5 px-1.5 pt-1", collapsed && "justify-center px-0")}>
         <LogoMark brand={brand} />
-        {!collapsed && <span className="truncate text-base font-semibold tracking-tight">{brand.name}</span>}
+        {!collapsed && (
+          <span className="truncate font-mono text-base font-semibold tracking-tight">
+            {brand.name}
+            <span className="animate-blink ml-0.5 text-primary">_</span>
+          </span>
+        )}
       </div>
 
       {collapsed ? (
@@ -103,11 +110,11 @@ function SidebarBody({ brand, activeView, onNavigate, userEmail, onLogout, colla
                   className={cn(
                     "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm transition-colors duration-150 focus-visible:ring-[3px] focus-visible:ring-ring/25 focus-visible:outline-none",
                     collapsed && "justify-center px-0",
-                    active ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    active ? "bg-accent font-medium text-foreground shadow-[inset_2px_0_0_var(--primary)]" : "text-muted-foreground hover:bg-muted hover:text-foreground",
                   )}
                 >
-                  <Icon className="size-4 shrink-0" aria-hidden="true" />
-                  {collapsed ? <span className="sr-only">{label}</span> : <span className="truncate">{label}</span>}
+                  <Icon className={cn("size-4 shrink-0", active && "text-primary")} aria-hidden="true" />
+                  {collapsed ? <span className="sr-only">{label}</span> : <span className="truncate font-mono text-[13px]">{label}</span>}
                 </button>
               </li>
             )
@@ -151,7 +158,7 @@ function SidebarBody({ brand, activeView, onNavigate, userEmail, onLogout, colla
   )
 }
 
-export function AppShell({ brand, activeView, onNavigate, userEmail, onLogout, chainSelector, walletButton, children }: AppShellProps) {
+export function AppShell({ brand, activeView, onNavigate, userEmail, onLogout, chainSelector, walletButton, statusBar, children }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -248,9 +255,13 @@ export function AppShell({ brand, activeView, onNavigate, userEmail, onLogout, c
           </div>
         </header>
 
+        {statusBar}
+
         {/* Page */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto">
-          <main className="mx-auto w-full max-w-6xl px-4 pt-6 pb-28 sm:px-6 sm:pt-8 lg:px-8 lg:pb-10">{children}</main>
+          <main key={activeView} className="animate-fade-up mx-auto w-full max-w-6xl px-4 pt-6 pb-28 sm:px-6 sm:pt-8 lg:px-8 lg:pb-10">
+            {children}
+          </main>
         </div>
 
         {/* Phone bottom tabs */}

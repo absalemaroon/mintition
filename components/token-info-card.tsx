@@ -4,6 +4,7 @@ import { AlertCircle, ExternalLink } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Card, CardContent } from "@/components/ui/card"
 import { CopyButton } from "@/components/app/copy-button"
+import { TokenLogo } from "@/components/app/token-logo"
 import { explorerAddressUrl, shortAddress, type ChainConfig } from "@/lib/chains"
 import { cn } from "@/lib/utils"
 import type { TokenInfoView } from "@/lib/types"
@@ -44,14 +45,7 @@ export function TokenInfoCard({ info, chain }: { info: TokenInfoView; chain: Cha
     <Card className="gap-4">
       <CardContent className="space-y-4">
         <div className="flex items-start gap-3">
-          <span className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-full border bg-muted text-base font-semibold text-muted-foreground">
-            {info.image ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={info.image} alt="" className="size-full object-cover" referrerPolicy="no-referrer" />
-            ) : (
-              (info.symbol || "?").slice(0, 1)
-            )}
-          </span>
+          <TokenLogo src={info.image} symbol={info.symbol} size={48} />
           <div className="min-w-0 flex-1">
             <p className="truncate text-lg font-semibold tracking-tight">
               {info.name || "Unknown token"} {info.symbol && <span className="text-muted-foreground">({info.symbol})</span>}

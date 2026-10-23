@@ -1,6 +1,6 @@
 # Networks
 
-109 of 115 networks are enabled ("live"). Each has a public RPC endpoint in `lib/chains.ts` (PUBLIC_RPC). Six have none yet
+110 of 116 networks (including Solana) are enabled ("live"). Each has a public RPC endpoint in `lib/chains.ts` (PUBLIC_RPC). Six have none yet
 and stay "soon": Evmos, Zircuit, Katana, KardiaChain, Velas, Shiden.
 
 * The RPC list was written from each network's public documentation, not tested from here. Use **Settings > Network check**
@@ -12,5 +12,5 @@ and stay "soon": Evmos, Zircuit, Katana, KardiaChain, Velas, Shiden.
 * Logos: `node scripts/fetch-chain-logos.mjs`.
 
 ## Not done yet
-* Solana and other non-EVM chains.
+* Other non-EVM chains (Tron, TON, Sui, Aptos...). Solana is supported, see SOLANA.md.
 * Auto-funding (browser) on chains other than Celo.

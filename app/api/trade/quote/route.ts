@@ -4,6 +4,10 @@ import { route, ApiError } from "@/lib/security/guard"
 import { chainOrThrow, ERC20_ABI, getProvider, NATIVE_TOKEN_ADDRESS } from "@/lib/server/evm"
 import { getSwapQuote } from "@/lib/server/swap"
 import { getWalletAddresses } from "@/lib/server/vault"
+import { isSolanaAddress } from "@/lib/server/solana/base58"
+import { jupiterQuote } from "@/lib/server/solana/jupiter"
+import { getMintInfo, getTokenBalance } from "@/lib/server/solana/rpc"
+import { WRAPPED_SOL_MINT } from "@/lib/server/solana/tx"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -29,11 +33,44 @@ export const POST = route(async (req) => {
   const b = body.data
   const chain = chainOrThrow(b.chainId)
   if (chain.status !== "live") throw new ApiError(400, "That network is not available yet")
-  if (!ethers.isAddress(b.token)) throw new ApiError(400, "Enter a valid token address")
-  const token = ethers.getAddress(b.token.toLowerCase())
-
   const address = (await getWalletAddresses([b.walletId])).get(b.walletId)
   if (!address) throw new ApiError(404, "Wallet not found")
+
+  if (chain.family === "solana") {
+    if (!isSolanaAddress(b.token)) throw new ApiError(400, "Enter a valid Solana token address")
+    try {
+      const mint = await getMintInfo(b.token)
+      if (!mint.exists) throw new ApiError(400, "That token does not exist on Solana")
+      let amountIn: bigint
+      if (b.side === "buy") {
+        if (!b.amount) throw new ApiError(400, "Enter an amount")
+        amountIn = ethers.parseUnits(b.amount, 9)
+      } else {
+        const bal = await getTokenBalance(address, b.token)
+        amountIn = (bal * BigInt(Math.round(b.percent ?? 100))) / 100n
+        if (amountIn <= 0n) throw new ApiError(400, "That wallet holds none of this token. Pick a wallet that does.")
+      }
+      const q = await jupiterQuote({ inputMint: b.side === "buy" ? WRAPPED_SOL_MINT : b.token, outputMint: b.side === "buy" ? b.token : WRAPPED_SOL_MINT, amount: amountIn, slippagePct: b.slippage })
+      const outDec = b.side === "buy" ? mint.decimals : 9
+      return {
+        side: b.side,
+        router: "Jupiter",
+        symbol: "token",
+        amountIn: ethers.formatUnits(amountIn, b.side === "buy" ? 9 : mint.decimals),
+        expectedOut: ethers.formatUnits(q.outAmount, outDec),
+        minOut: ethers.formatUnits(q.minOut, outDec),
+        priceImpactPct: q.priceImpactPct,
+        outSymbol: b.side === "buy" ? "token" : "SOL",
+        inSymbol: b.side === "buy" ? "SOL" : "token",
+      }
+    } catch (error) {
+      if (error instanceof ApiError) throw error
+      throw new ApiError(400, error instanceof Error ? error.message.slice(0, 200) : "Could not get a quote")
+    }
+  }
+
+  if (!ethers.isAddress(b.token)) throw new ApiError(400, "Enter a valid token address")
+  const token = ethers.getAddress(b.token.toLowerCase())
 
   try {
     const provider = await getProvider(b.chainId)

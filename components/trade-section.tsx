@@ -16,7 +16,7 @@ import { JobsList } from "@/components/jobs-list"
 import { defaultStart } from "@/components/scheduler-section"
 import { TokenInfoCard } from "@/components/token-info-card"
 import { api } from "@/lib/api-client"
-import { shortAddress, type ChainConfig } from "@/lib/chains"
+import { isValidAddress, shortAddress, type ChainConfig } from "@/lib/chains"
 import { cn } from "@/lib/utils"
 import type { BalanceRow, BatchInfo, JobView, MintWallet, QuotePreview, TokenInfoView } from "@/lib/types"
 
@@ -74,7 +74,7 @@ export function TradeSection({ chain, batches, selectedBatchId, wallets, onCreat
   const [destType, setDestType] = useState<"address" | "batch">("address")
   const [destAddress, setDestAddress] = useState("")
   const [destBatchId, setDestBatchId] = useState("")
-  const [pairing, setPairing] = useState<"sequential" | "random">("sequential")
+  const [pairing, setPairing] = useState<"sequential" | "random" | "all">("sequential")
 
   // safety + timing
   const [slippage, setSlippage] = useState("3")
@@ -97,6 +97,7 @@ export function TradeSection({ chain, batches, selectedBatchId, wallets, onCreat
   const timeZone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, [])
   const needsToken = tab !== "transfer" || asset === "token"
   const decimals = info?.decimals ?? 18
+  const familyName = chain.family === "solana" ? "Solana" : "EVM"
   const symbol = info?.symbol || "token"
 
   // A different network or token invalidates everything that was looked up.
@@ -178,11 +179,12 @@ export function TradeSection({ chain, batches, selectedBatchId, wallets, onCreat
 
   let problem = ""
   if (!selectedBatchId || walletCount === 0) problem = "Select a batch with wallets first (Batches page)"
+  else if (batch && batch.family !== chain.family) problem = `This batch holds ${batch.family === "solana" ? "Solana" : "EVM"} wallets. Pick a ${familyName} batch for ${chain.name} (Batches page).`
   else if (needsToken && !info) problem = "Look up a token first"
   else if (needsToken && info && !info.isContract) problem = "There is no contract at that address on this network"
   else if (tab === "buy" && !(amountNum && amountNum > 0)) problem = "Enter an amount to spend per wallet"
   else if (tab === "transfer" && mode === "fixed" && !(amountNum && amountNum > 0)) problem = "Enter an amount per wallet"
-  else if (tab === "transfer" && destType === "address" && !ethers.isAddress(destAddress.trim())) problem = "Enter a valid destination address"
+  else if (tab === "transfer" && destType === "address" && !isValidAddress(chain, destAddress.trim())) problem = "Enter a valid destination address"
   else if (tab === "transfer" && destType === "batch" && !destBatchId) problem = "Choose a destination batch"
   else if (tab !== "transfer" && (slip === null || slip < 0.1 || slip > 30)) problem = "Slippage must be between 0.1% and 30%"
   else if (tab !== "transfer" && (impact === null || impact < 0.5 || impact > 50)) problem = "Max price impact must be between 0.5% and 50%"
@@ -191,10 +193,10 @@ export function TradeSection({ chain, batches, selectedBatchId, wallets, onCreat
   const buildPayload = (): Record<string, unknown> => {
     const base = { batchId: selectedBatchId, chainId: chain.chainId, runAt: startMode === "later" ? startDate!.toISOString() : null, concurrency }
     if (tab === "buy") {
-      return { ...base, kind: "buy", token: info!.address, amountWei: ethers.parseUnits(buyAmount, 18).toString(), amountDisplay: buyAmount, slippage: slip, maxImpact: impact, symbol: info!.symbol ?? undefined }
+      return { ...base, kind: "buy", token: info!.address, amountWei: ethers.parseUnits(buyAmount, chain.nativeDecimals).toString(), amountDisplay: buyAmount, slippage: slip, maxImpact: impact, symbol: info!.symbol ?? undefined }
     }
     if (tab === "sell") return { ...base, kind: "sell", token: info!.address, percent: sellPercent, slippage: slip, maxImpact: impact, symbol: info!.symbol ?? undefined }
-    const unitDecimals = asset === "native" ? 18 : decimals
+    const unitDecimals = asset === "native" ? chain.nativeDecimals : decimals
     return {
       ...base,
       kind: "transfer",
@@ -246,7 +248,7 @@ export function TradeSection({ chain, batches, selectedBatchId, wallets, onCreat
               value={tokenInput}
               onChange={(e) => setTokenInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && tokenInput.trim() && !loadingInfo && lookup()}
-              placeholder="0x..."
+              placeholder={chain.family === "solana" ? "Token mint address" : "0x..."}
               aria-label="Token contract address"
               className="font-mono text-sm"
               autoComplete="off"
@@ -339,7 +341,7 @@ export function TradeSection({ chain, batches, selectedBatchId, wallets, onCreat
                   {mode === "all" && asset === "native" && <p className="text-xs text-muted-foreground">Sends the whole balance minus a small amount kept for the network fee.</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label>Send to</Label>
+                  <Label>Send to {destType === "batch" && pairing === "all" ? "(use a batch with a single funded wallet as the source)" : ""}</Label>
                   <Segmented<"address" | "batch"> label="Destination" value={destType} onChange={setDestType} options={[["address", "One address"], ["batch", "Wallets in a batch"]]} />
                   {destType === "address" ? (
                     <Input value={destAddress} onChange={(e) => setDestAddress(e.target.value)} placeholder="0x... (every wallet sends here)" className="font-mono text-sm" aria-label="Destination address" autoComplete="off" spellCheck={false} />
@@ -347,15 +349,16 @@ export function TradeSection({ chain, batches, selectedBatchId, wallets, onCreat
                     <div className="grid gap-3 sm:grid-cols-2">
                       <NativeSelect value={destBatchId} onChange={(e) => setDestBatchId(e.target.value)} aria-label="Destination batch">
                         <option value="">Choose a batch</option>
-                        {batches.map((b) => (
+                        {batches.filter((b) => b.family === chain.family).map((b) => (
                           <option key={b.id} value={b.id}>
                             {b.name} ({b.walletCount}){b.id === selectedBatchId ? " - same batch" : ""}
                           </option>
                         ))}
                       </NativeSelect>
-                      <NativeSelect value={pairing} onChange={(e) => setPairing(e.target.value as "sequential" | "random")} aria-label="Pairing">
+                      <NativeSelect value={pairing} onChange={(e) => setPairing(e.target.value as "sequential" | "random" | "all")} aria-label="Pairing">
                         <option value="sequential">In order (1st to 1st, 2nd to 2nd...)</option>
                         <option value="random">Shuffled</option>
+                        <option value="all">Distribute: every source to every destination</option>
                       </NativeSelect>
                     </div>
                   )}
@@ -459,7 +462,7 @@ export function TradeSection({ chain, batches, selectedBatchId, wallets, onCreat
           {tab === "buy" && <SummaryRow label="Total to spend" value={totalSpend !== null ? `${totalSpend.toLocaleString("en", { maximumSignificantDigits: 8 })} ${chain.nativeSymbol}` : "-"} strong />}
           {tab === "sell" && <SummaryRow label="Per wallet" value={`${sellPercent}% of balance`} />}
           {tab === "transfer" && <SummaryRow label="Per wallet" value={mode === "all" ? "Everything" : `${amount || "0"} ${asset === "native" ? chain.nativeSymbol : symbol}`} />}
-          {tab === "transfer" && <SummaryRow label="To" value={destType === "address" ? (ethers.isAddress(destAddress.trim()) ? shortAddress(destAddress.trim(), 6, 4) : "-") : batches.find((b) => b.id === destBatchId)?.name || "-"} mono={destType === "address"} />}
+          {tab === "transfer" && <SummaryRow label="To" value={destType === "address" ? (isValidAddress(chain, destAddress.trim()) ? shortAddress(destAddress.trim(), 6, 4) : "-") : batches.find((b) => b.id === destBatchId)?.name || "-"} mono={destType === "address"} />}
           {tab !== "transfer" && <SummaryRow label="Slippage" value={`${slippage || "?"}%`} />}
           <SummaryRow label="Starts" value={startMode === "now" ? "Immediately" : startInvalid ? "Pick a time" : startDate!.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })} />
         </SummaryCard>

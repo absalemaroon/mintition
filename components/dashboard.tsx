@@ -4,13 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { ethers } from "ethers"
 import { toast } from "sonner"
-import { ArrowLeftRight, ArrowRight, CheckCircle2, Fuel, Loader2, Minus, Plus, ShieldAlert, Sparkles, WalletCards } from "lucide-react"
+import { ArrowLeftRight, ArrowRight, CircleDollarSign, Fuel, KeyRound, Loader2, Minus, Plus, ShieldAlert, Sparkles, WalletCards, CheckCircle2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { api } from "@/lib/api-client"
 import { CHAINS, DEFAULT_CHAIN_ID, getChain } from "@/lib/chains"
 import { CONTRACT_CONFIG } from "@/lib/contract-config"
 import { clearLegacyStorage, readLegacyWallets } from "@/lib/legacy-storage"
-import type { BatchInfo, Branding, JobView, LegacyWallet, MintWallet, Transaction } from "@/lib/types"
+import type { BalanceRow, BatchInfo, Branding, JobView, LegacyWallet, MintWallet, Transaction, WalletFamily } from "@/lib/types"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -23,6 +23,9 @@ import { EmptyState } from "@/components/app/empty-state"
 import { getNavItem, type ViewId } from "@/components/app/nav"
 import { PageHeader } from "@/components/app/page-header"
 import { StatCard } from "@/components/app/stat-card"
+import { LiveConsole } from "@/components/app/live-console"
+import { Ticker } from "@/components/app/ticker"
+import { WalletDrawer } from "./wallet-drawer"
 import { AutoFundingSection } from "./auto-funding-section"
 import { BatchesSection } from "./batches-section"
 import { MintingSection } from "./minting-section"
@@ -34,6 +37,7 @@ import { WalletManagement } from "./wallet-management"
 
 interface ApiWallet {
   id: string
+  family?: WalletFamily
   batchId: string | null
   address: string
   fundingStatus: MintWallet["fundingStatus"]
@@ -44,6 +48,7 @@ interface ApiWallet {
 
 const toMintWallet = (w: ApiWallet): MintWallet => ({
   id: w.id,
+  family: w.family ?? "evm",
   batchId: w.batchId,
   address: w.address,
   funded: w.fundingStatus === "funded",
@@ -88,6 +93,14 @@ export default function Dashboard() {
   const [legacyLocal, setLegacyLocal] = useState<LegacyWallet[]>([])
   const [legacyServerBatches, setLegacyServerBatches] = useState(0)
   const [isImporting, setIsImporting] = useState(false)
+  const [balances, setBalances] = useState<Record<string, BalanceRow> | null>(null)
+  const [nativePriceUsd, setNativePriceUsd] = useState<number | null>(null)
+  const [loadingBalances, setLoadingBalances] = useState(false)
+  const [drawerWallet, setDrawerWallet] = useState<MintWallet | null>(null)
+  const [importText, setImportText] = useState("")
+  const [isImportingKeys, setIsImportingKeys] = useState(false)
+
+  const activeChain = getChain(networkId)
 
   const walletsRef = useRef(wallets)
   walletsRef.current = wallets
@@ -166,6 +179,73 @@ export default function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeView])
 
+  // The active batch must hold the same kind of wallet as the active network (EVM or Solana).
+  useEffect(() => {
+    if (!hydrated) return
+    const current = batches.find((b) => b.id === selectedBatchId)
+    if (current && current.family === activeChain.family) return
+    const next = batches.find((b) => b.family === activeChain.family)
+    if (next) {
+      setSelectedBatchId(next.id)
+      loadWallets(next.id).catch(() => undefined)
+    } else {
+      setSelectedBatchId("")
+      setWallets([])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeChain.family, batches, hydrated])
+
+  // Live balances for the active batch on the active network.
+  const loadBalances = useCallback(async () => {
+    if (!selectedBatchId || wallets.length === 0 || wallets[0]?.family !== activeChain.family) return
+    setLoadingBalances(true)
+    try {
+      const data = await api<{ rows: BalanceRow[]; nativePriceUsd: number | null }>("/api/trade/balances", {
+        method: "POST",
+        json: { chainId: activeChain.chainId, batchId: selectedBatchId },
+      })
+      setBalances(Object.fromEntries(data.rows.map((r) => [r.walletId, r])))
+      setNativePriceUsd(data.nativePriceUsd)
+    } catch (error) {
+      toast.error("Could not read balances", { description: error instanceof Error ? error.message : undefined })
+    } finally {
+      setLoadingBalances(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBatchId, wallets.length, activeChain.chainId, activeChain.family])
+
+  useEffect(() => {
+    setBalances(null)
+  }, [selectedBatchId, activeChain.chainId])
+
+  useEffect(() => {
+    if (!hydrated || (activeView !== "wallets" && activeView !== "dashboard")) return
+    loadBalances()
+    const timer = setInterval(loadBalances, 45_000)
+    return () => clearInterval(timer)
+  }, [hydrated, activeView, loadBalances])
+
+  const importKeys = async () => {
+    const keys = importText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+    if (keys.length === 0) return
+    setIsImportingKeys(true)
+    try {
+      const result = await api<{ batchId: string; imported: number }>("/api/wallets/import", {
+        method: "POST",
+        json: { family: activeChain.family, name: "Imported wallets", wallets: keys.map((privateKey) => ({ address: "", privateKey })) },
+      })
+      setImportText("")
+      await refreshBatches()
+      setSelectedBatchId(result.batchId)
+      await loadWallets(result.batchId)
+      toast.success("Wallets imported", { description: `${result.imported} encrypted and saved.` })
+    } catch (error) {
+      toast.error("Import failed", { description: error instanceof Error ? error.message : "Check the keys" })
+    } finally {
+      setIsImportingKeys(false)
+    }
+  }
+
   // ---------- account ----------
   const handleLogout = async () => {
     try {
@@ -200,13 +280,13 @@ export default function Dashboard() {
     try {
       const data = await api<{ batchId: string; wallets: ApiWallet[] }>("/api/wallets", {
         method: "POST",
-        json: { count: generatedCount, name: batchName.trim() || undefined },
+        json: { count: generatedCount, name: batchName.trim() || undefined, family: activeChain.family },
       })
       setWallets(data.wallets.map(toMintWallet))
       setSelectedBatchId(data.batchId)
       setBatchName("")
       await refreshBatches()
-      toast.success(`Generated ${generatedCount} wallets`, { description: "Encrypted and saved. You can reuse them any time." })
+      toast.success(`Generated ${generatedCount} ${activeChain.family === "solana" ? "Solana" : "EVM"} wallets`, { description: "Encrypted and saved. You can reuse them any time." })
     } catch (error) {
       toast.error("Generation failed", { description: error instanceof Error ? error.message : "Failed to generate wallets" })
     } finally {
@@ -262,7 +342,6 @@ export default function Dashboard() {
   }
 
   // ---------- minting (runs on the server) ----------
-  const activeChain = getChain(networkId)
 
   const submitJob = async (input: NewJobInput): Promise<boolean> => {
     if (!ethers.isAddress(input.contractAddress)) {
@@ -319,16 +398,24 @@ export default function Dashboard() {
   // ---------- derived ----------
   const fundedWalletCount = wallets.filter((w) => w.fundingStatus === "funded").length
   const totalMints = wallets.reduce((sum, w) => sum + (w.mintsCompleted || 0), 0)
-  const totalBalance = wallets.reduce((sum, w) => sum + Number(w.balance || 0), 0).toFixed(2)
+  const liveNative: number | null = balances ? (Object.values(balances) as BalanceRow[]).reduce((sum: number, b: BalanceRow) => sum + Number(b.native || 0), 0) : null
+  const liveUsd: number | null = liveNative !== null && nativePriceUsd !== null ? liveNative * Number(nativePriceUsd) : null
   const page = getNavItem(activeView)
   const brandProps = { name: brand.name, logoUrl: brand.hasLogo ? `/api/branding/logo?v=${brand.logoVersion}` : null }
 
   const statCards = (
     <>
-      <StatCard icon={WalletCards} label="Total Wallets" value={wallets.length} helper="In the active batch" loading={!hydrated} />
-      <StatCard icon={CheckCircle2} label="Funded Wallets" value={fundedWalletCount} helper="Ready to mint" loading={!hydrated} />
-      <StatCard icon={Sparkles} label="Total Mints" value={totalMints} helper="Across all wallets" loading={!hydrated} />
-      <StatCard icon={Fuel} label="Total Balance" value={`${totalBalance} ${activeChain.nativeSymbol}`} helper="Held by your wallets" loading={!hydrated} />
+      <StatCard icon={WalletCards} label="Wallets" value={wallets.length} numeric={{ value: wallets.length }} helper={`${activeChain.family === "solana" ? "Solana" : "EVM"} batch in use`} loading={!hydrated} />
+      <StatCard icon={CheckCircle2} label="Funded" value={fundedWalletCount} numeric={{ value: fundedWalletCount }} helper="Ready to act" loading={!hydrated} />
+      <StatCard icon={Sparkles} label="Mints" value={totalMints} numeric={{ value: totalMints }} helper="Completed" loading={!hydrated} />
+      <StatCard
+        icon={CircleDollarSign}
+        label="Portfolio"
+        value={liveUsd === null ? "--" : ""}
+        numeric={liveUsd === null ? undefined : { value: liveUsd, decimals: 2, prefix: "$" }}
+        helper={liveNative !== null ? `${liveNative.toLocaleString("en", { maximumSignificantDigits: 6 })} ${activeChain.nativeSymbol} live` : "Reading balances..."}
+        loading={!hydrated}
+      />
     </>
   )
 
@@ -378,6 +465,7 @@ export default function Dashboard() {
       onLogout={handleLogout}
       chainSelector={<ChainPicker chains={CHAINS} value={activeChain.id} onChange={setNetworkId} />}
       walletButton={<ConnectWalletButton connectedAddress={connectedAddress} onConnect={connectWallet} />}
+      statusBar={<Ticker chain={activeChain} runningJobs={jobs.filter((j) => j.status === "running").length} scheduledJobs={jobs.filter((j) => j.status === "scheduled").length} />}
     >
       <div className="space-y-6 sm:space-y-8">
         <PageHeader
@@ -398,9 +486,11 @@ export default function Dashboard() {
         {/* Dashboard */}
         {activeView === "dashboard" && (
           <div className="space-y-6">
-            <section aria-label="Overview" className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+            <section aria-label="Overview" className="stagger grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
               {statCards}
             </section>
+
+            <LiveConsole transactions={transactions} jobs={jobs} chain={activeChain} />
 
             <div className="grid items-start gap-6 lg:grid-cols-5">
               <div className="lg:col-span-3">
@@ -445,7 +535,7 @@ export default function Dashboard() {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-lg">Generate Wallets</CardTitle>
-                  <CardDescription>New wallets are encrypted and saved straight away.</CardDescription>
+                  <CardDescription>New {activeChain.family === "solana" ? "Solana" : "EVM"} wallets are encrypted and saved straight away.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
@@ -500,25 +590,67 @@ export default function Dashboard() {
             </div>
 
             {!hydrated ? (
-              <WalletManagement wallets={[]} onWalletsUpdate={handleUpdateWallets} loading nativeSymbol={activeChain.nativeSymbol} />
+              <WalletManagement wallets={[]} chain={activeChain} balances={null} nativePriceUsd={null} loadingBalances={false} onRefresh={() => undefined} onOpen={() => undefined} loading />
             ) : wallets.length > 0 ? (
-              <WalletManagement wallets={wallets} onWalletsUpdate={handleUpdateWallets} nativeSymbol={activeChain.nativeSymbol} batchId={selectedBatchId} />
+              <WalletManagement wallets={wallets} chain={activeChain} balances={balances} nativePriceUsd={nativePriceUsd} loadingBalances={loadingBalances} onRefresh={loadBalances} onOpen={setDrawerWallet} batchId={selectedBatchId} />
             ) : (
               <Card>
                 <CardContent>
                   <EmptyState
                     icon={WalletCards}
                     title="No wallets yet"
-                    description="Choose how many wallets you need, then generate them. They are encrypted and saved, so you can reuse them later."
+                    description={`No ${activeChain.family === "solana" ? "Solana" : "EVM"} batch yet. Generate wallets for ${activeChain.name}, or import ones you already have. They are encrypted and saved.`}
                   />
                 </CardContent>
               </Card>
             )}
+
+            <details className="rounded-lg border bg-card/90">
+              <summary className="flex cursor-pointer items-center gap-2 px-5 py-4 font-mono text-[13px] font-semibold tracking-wide uppercase">
+                <KeyRound className="size-4 text-primary" aria-hidden="true" />
+                Import wallets you already have
+              </summary>
+              <div className="space-y-3 border-t px-5 py-4">
+                <p className="text-sm text-muted-foreground">
+                  One {activeChain.family === "solana" ? "Solana secret key (base58, as Phantom exports it)" : "private key (0x...)"} per line. They are sent over HTTPS, encrypted on the server, and never shown again.
+                  Use this for a funded wallet you want to spread gas from (Trade, then Transfer, then Distribute).
+                </p>
+                <textarea
+                  value={importText}
+                  onChange={(e) => setImportText(e.target.value)}
+                  rows={4}
+                  spellCheck={false}
+                  autoComplete="off"
+                  aria-label="Private keys, one per line"
+                  className="w-full rounded-lg border border-border bg-muted p-3 font-mono text-xs outline-none focus-visible:border-foreground/40 focus-visible:ring-[3px] focus-visible:ring-ring/15"
+                />
+                <Button onClick={importKeys} disabled={isImportingKeys || !importText.trim()}>
+                  {isImportingKeys && <Loader2 className="animate-spin" aria-hidden="true" />}
+                  Import and encrypt
+                </Button>
+              </div>
+            </details>
           </div>
         )}
 
         {/* Auto-Funding */}
-        {activeView === "funding" &&
+        {activeView === "funding" && activeChain.id !== "42220" && (
+          <Card>
+            <CardContent>
+              <EmptyState
+                icon={Fuel}
+                title={`Auto-Funding from your browser works on Celo only`}
+                description={`For ${activeChain.name}: import a funded wallet (Wallets page), then use Trade > Transfer > Wallets in a batch > "Distribute" to send gas to every wallet.`}
+                action={
+                  <Button variant="outline" onClick={() => setActiveView("trade")}>
+                    Open Trade
+                  </Button>
+                }
+              />
+            </CardContent>
+          </Card>
+        )}
+        {activeView === "funding" && activeChain.id === "42220" &&
           (wallets.length > 0 ? (
             <AutoFundingSection wallets={wallets} onWalletsUpdate={handleUpdateWallets} nativeSymbol={activeChain.nativeSymbol} chainName={activeChain.name} />
           ) : (
@@ -539,7 +671,14 @@ export default function Dashboard() {
           ))}
 
         {/* Minting */}
-        {activeView === "mint" && (
+        {activeView === "mint" && activeChain.family === "solana" && (
+          <Card>
+            <CardContent>
+              <EmptyState icon={Sparkles} title="NFT minting is not available on Solana yet" description="Minting uses an EVM contract. Switch to an EVM network, or use Trade for Solana tokens." />
+            </CardContent>
+          </Card>
+        )}
+        {activeView === "mint" && activeChain.family !== "solana" && (
           <MintingSection
             chain={activeChain}
             contractAddress={contractAddress}
@@ -572,7 +711,7 @@ export default function Dashboard() {
         )}
 
         {/* Scheduler */}
-        {activeView === "schedule" && (
+        {activeView === "schedule" && activeChain.family !== "solana" && (
           <SchedulerSection
             chain={activeChain}
             batches={batches}
@@ -606,6 +745,7 @@ export default function Dashboard() {
           />
         )}
       </div>
+      <WalletDrawer wallet={drawerWallet} chain={activeChain} onClose={() => setDrawerWallet(null)} />
     </AppShell>
   )
 }

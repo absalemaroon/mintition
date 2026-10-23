@@ -2,6 +2,8 @@ import { ethers } from "ethers"
 import { ERC20_ABI, getProvider } from "@/lib/server/evm"
 import type { ChainConfig } from "@/lib/chains"
 import { CHAINS } from "@/lib/chains"
+import { isSolanaAddress } from "@/lib/server/solana/base58"
+import { getMintInfo } from "@/lib/server/solana/rpc"
 
 /** Token information for the Trade page: on-chain facts plus market data from DexScreener (free, no key). */
 
@@ -66,6 +68,11 @@ export function parsePair(p: any): PairInfo {
   }
 }
 
+/** Token images are served through our own /api/logo/token so the browser never talks to third parties. */
+export function proxiedImage(url: unknown): string | null {
+  return typeof url === "string" && url.startsWith("https://") ? `/api/logo/token?u=${encodeURIComponent(url)}` : null
+}
+
 const cache = new Map<string, { at: number; value: any }>()
 
 async function fetchPairs(address: string): Promise<any[]> {
@@ -85,6 +92,10 @@ async function fetchPairs(address: string): Promise<any[]> {
 }
 
 async function onChain(chain: ChainConfig, address: string) {
+  if (chain.family === "solana") {
+    const m = await getMintInfo(address)
+    return { isContract: m.exists, name: null, symbol: null, decimals: m.exists ? m.decimals : null, totalSupply: m.exists ? (Number(m.supply) / 10 ** m.decimals).toString() : null }
+  }
   const provider = await getProvider(chain.chainId)
   const code = await provider.getCode(address)
   if (code === "0x") return { isContract: false, name: null, symbol: null, decimals: null, totalSupply: null }
@@ -108,8 +119,10 @@ async function onChain(chain: ChainConfig, address: string) {
 }
 
 export async function getTokenInfo(chain: ChainConfig, rawAddress: string): Promise<TokenInfo> {
-  if (!ethers.isAddress(rawAddress)) throw new Error("That is not a valid token address")
-  const address = ethers.getAddress(rawAddress.toLowerCase())
+  const solana = chain.family === "solana"
+  if (solana ? !isSolanaAddress(rawAddress) : !ethers.isAddress(rawAddress)) throw new Error("That is not a valid token address")
+  const address = solana ? rawAddress : ethers.getAddress(rawAddress.toLowerCase())
+  const norm = (a: string | undefined) => (solana ? a : a?.toLowerCase())
 
   const [chainFacts, allPairs] = await Promise.all([
     onChain(chain, address),
@@ -117,15 +130,15 @@ export async function getTokenInfo(chain: ChainConfig, rawAddress: string): Prom
   ])
 
   const slug = chain.dexscreener
-  const lower = address.toLowerCase()
-  const involving = allPairs.filter((p) => p?.baseToken?.address?.toLowerCase() === lower || p?.quoteToken?.address?.toLowerCase() === lower)
+  const lower = norm(address)
+  const involving = allPairs.filter((p) => norm(p?.baseToken?.address) === lower || norm(p?.quoteToken?.address) === lower)
   const onSelected = slug ? involving.filter((p) => p.chainId === slug) : involving
   const sorted = [...onSelected].sort((a, b) => (num(b?.liquidity?.usd) ?? 0) - (num(a?.liquidity?.usd) ?? 0))
   const pairs = sorted.slice(0, 8).map(parsePair)
   const best = sorted[0]
 
   const elsewhere = slug && onSelected.length === 0 ? [...new Set(involving.map((p) => String(p.chainId)))].slice(0, 8) : []
-  const tokenSide = best ? (best.baseToken?.address?.toLowerCase() === lower ? best.baseToken : best.quoteToken) : null
+  const tokenSide = best ? (norm(best.baseToken?.address) === lower ? best.baseToken : best.quoteToken) : null
   const info = best?.info ?? {}
 
   const warnings: string[] = []
@@ -143,7 +156,7 @@ export async function getTokenInfo(chain: ChainConfig, rawAddress: string): Prom
     symbol: chainFacts.symbol ?? tokenSide?.symbol ?? null,
     decimals: chainFacts.decimals,
     totalSupply: chainFacts.totalSupply,
-    image: typeof info.imageUrl === "string" && info.imageUrl.startsWith("https://") ? info.imageUrl : null,
+    image: proxiedImage(info.imageUrl),
     websites: Array.isArray(info.websites) ? info.websites.filter((w: any) => typeof w?.url === "string" && w.url.startsWith("https://")).slice(0, 3).map((w: any) => ({ label: String(w.label ?? "Website"), url: w.url })) : [],
     socials: Array.isArray(info.socials) ? info.socials.filter((s: any) => typeof s?.url === "string" && s.url.startsWith("https://")).slice(0, 4).map((s: any) => ({ type: String(s.type ?? "link"), url: s.url })) : [],
     market: pairs[0] ?? null,
@@ -156,4 +169,35 @@ export async function getTokenInfo(chain: ChainConfig, rawAddress: string): Prom
 /** Human names for DexScreener slugs, used for the "found on other chains" hint. */
 export function chainNameForSlug(slug: string): string {
   return CHAINS.find((c) => c.dexscreener === slug)?.name ?? slug
+}
+
+export interface TokenQuote {
+  address: string
+  symbol: string | null
+  name: string | null
+  priceUsd: number | null
+  image: string | null
+}
+
+/** Prices, names and logos for several tokens at once (DexScreener accepts up to 30 addresses per call). */
+export async function getTokenQuotes(chain: ChainConfig, addresses: string[]): Promise<Map<string, TokenQuote>> {
+  const out = new Map<string, TokenQuote>()
+  const list = [...new Set(addresses)].slice(0, 30)
+  if (list.length === 0) return out
+  const solana = chain.family === "solana"
+  const norm = (a: string | undefined) => (solana ? a : a?.toLowerCase())
+  let pairs: any[] = []
+  try {
+    const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${list.map(encodeURIComponent).join(",")}`, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8000), cache: "no-store" })
+    if (res.ok) pairs = ((await res.json()) as { pairs?: any[] | null }).pairs ?? []
+  } catch {
+    /* prices are optional */
+  }
+  for (const addr of list) {
+    const mine = pairs
+      .filter((p) => (!chain.dexscreener || p.chainId === chain.dexscreener) && norm(p?.baseToken?.address) === norm(addr))
+      .sort((a, b) => (num(b?.liquidity?.usd) ?? 0) - (num(a?.liquidity?.usd) ?? 0))[0]
+    out.set(addr, { address: addr, symbol: mine?.baseToken?.symbol ?? null, name: mine?.baseToken?.name ?? null, priceUsd: num(mine?.priceUsd), image: proxiedImage(mine?.info?.imageUrl) })
+  }
+  return out
 }

@@ -23,7 +23,7 @@ Then Authentication > Providers/Settings: turn **off** "Allow new users to sign 
 extra users, this is a second lock).
 
 ## 2b. Trading tables
-Also run `scripts/004_trading.sql` (adds buy, sell and transfer jobs). See `TRADING.md`.
+Also run `scripts/004_trading.sql` (buy, sell and transfer jobs) and `scripts/005_solana.sql` (Solana wallets). See `TRADING.md` and `SOLANA.md`.
 
 ## 3. Start the background worker
 Enable the `pg_cron` and `pg_net` extensions (Database > Extensions), edit the two placeholders in

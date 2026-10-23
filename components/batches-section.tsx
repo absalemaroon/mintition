@@ -45,7 +45,10 @@ export function BatchesSection({ batches, selectedBatchId, onLoadBatch }: Batche
                         selected ? "border-foreground bg-muted" : "border-border bg-card hover:bg-muted/60",
                       )}
                     >
-                      <span className="block truncate font-medium">{batch.name}</span>
+                      <span className="flex items-center justify-between gap-2">
+                        <span className="truncate font-medium">{batch.name}</span>
+                        <span className="shrink-0 rounded border px-1.5 py-0.5 font-mono text-[10px] tracking-wider text-muted-foreground uppercase">{batch.family === "solana" ? "SOL" : "EVM"}</span>
+                      </span>
                       <span className="mt-0.5 block text-sm text-muted-foreground">
                         {batch.walletCount} wallets{batch.totalMints ? ` · ${batch.totalMints} mints` : ""}
                       </span>

@@ -3,6 +3,12 @@ import { randomUUID } from "node:crypto"
 import { createAdminClient } from "@/lib/supabase/server-admin"
 import { blindIndex, decrypt, decryptJson, encrypt, encryptJson } from "@/lib/security/crypto"
 import { ApiError } from "@/lib/security/guard"
+import { generateKeypair, parseSecretKey } from "@/lib/server/solana/keys"
+
+export type WalletFamily = "evm" | "solana"
+
+/** EVM addresses are case-insensitive, Solana addresses are not. */
+const addrKey = (family: WalletFamily, address: string) => (family === "evm" ? address.toLowerCase() : address)
 
 /**
  * Encrypted wallet vault. Private keys and addresses never touch the database in plain text:
@@ -17,6 +23,7 @@ export type FundingStatus = (typeof FUNDING_STATUSES)[number]
 
 export interface PublicWallet {
   id: string
+  family: WalletFamily
   batchId: string | null
   address: string
   fundingStatus: FundingStatus
@@ -27,6 +34,7 @@ export interface PublicWallet {
 
 export interface PublicBatch {
   id: string
+  family: WalletFamily
   name: string
   description: string
   walletCount: number
@@ -62,26 +70,28 @@ function sanitizeName(name: string | undefined, fallback: string): string {
   return cleaned || fallback
 }
 
-function walletRow(batchId: string, w: NewWallet) {
+function walletRow(batchId: string, w: NewWallet, family: WalletFamily = "evm") {
   const id = randomUUID()
   return {
     id,
     batch_id: batchId,
+    family,
     address_enc: encrypt(w.address, ctx.addr(id)),
-    address_hash: blindIndex(w.address.toLowerCase()),
+    address_hash: blindIndex(addrKey(family, w.address)),
     pk_enc: encrypt(w.privateKey, ctx.pk(id)),
     meta_enc: encryptJson({ balance: "0" }, ctx.meta(id)),
   }
 }
 
 /** Creates a batch and encrypts + stores its wallets. Skips addresses already in the vault. */
-async function storeBatch(name: string, description: string, wallets: NewWallet[]): Promise<string> {
+async function storeBatch(name: string, description: string, wallets: NewWallet[], family: WalletFamily = "evm"): Promise<string> {
   const batchId = randomUUID()
   must(
     await db()
       .from("wallet_batches")
       .insert({
         id: batchId,
+        family,
         name: "encrypted",
         description: "",
         wallet_count: 0,
@@ -99,10 +109,10 @@ async function storeBatch(name: string, description: string, wallets: NewWallet[
         await db()
           .from("wallets")
           .select("address_hash")
-          .in("address_hash", group.map((w) => blindIndex(w.address.toLowerCase()))),
+          .in("address_hash", group.map((w) => blindIndex(addrKey(family, w.address)))),
       ) as { address_hash: string }[]
       const known = new Set(existing.map((r) => r.address_hash))
-      const rows = group.filter((w) => !known.has(blindIndex(w.address.toLowerCase()))).map((w) => walletRow(batchId, w))
+      const rows = group.filter((w) => !known.has(blindIndex(addrKey(family, w.address)))).map((w) => walletRow(batchId, w, family))
       if (rows.length) must(await db().from("wallets").insert(rows))
       stored += rows.length
     }
@@ -116,33 +126,45 @@ async function storeBatch(name: string, description: string, wallets: NewWallet[
 }
 
 /** Generates wallets on the server so the keys are born encrypted. */
-export async function generateBatch(count: number, name?: string): Promise<{ batchId: string; wallets: PublicWallet[] }> {
+export async function generateBatch(count: number, name?: string, family: WalletFamily = "evm"): Promise<{ batchId: string; wallets: PublicWallet[] }> {
   if (!Number.isInteger(count) || count < 1 || count > 100) throw new ApiError(400, "Count must be between 1 and 100")
   const wallets: NewWallet[] = Array.from({ length: count }, () => {
+    if (family === "solana") {
+      const k = generateKeypair()
+      return { address: k.address, privateKey: k.secretKey }
+    }
     const w = new ethers.Wallet(ethers.hexlify(ethers.randomBytes(32)))
     return { address: w.address, privateKey: w.privateKey }
   })
-  const batchId = await storeBatch(sanitizeName(name, `Batch ${new Date().toISOString().slice(0, 16).replace("T", " ")}`), "", wallets)
+  const batchId = await storeBatch(sanitizeName(name, `Batch ${new Date().toISOString().slice(0, 16).replace("T", " ")}`), "", wallets, family)
   return { batchId, wallets: await listWallets(batchId) }
 }
 
 /** Moves wallets the user already has (for example from the old browser storage) into the vault. */
-export async function importWallets(items: NewWallet[], name?: string): Promise<{ batchId: string; imported: number; skipped: number }> {
+export async function importWallets(items: NewWallet[], name?: string, family: WalletFamily = "evm"): Promise<{ batchId: string; imported: number; skipped: number }> {
   const valid: NewWallet[] = []
   const seen = new Set<string>()
   for (const item of items) {
     try {
-      if (!ethers.isHexString(item.privateKey, 32)) continue
-      const derived = new ethers.Wallet(item.privateKey).address // never trust the supplied address
-      if (seen.has(derived.toLowerCase())) continue
-      seen.add(derived.toLowerCase())
-      valid.push({ address: derived, privateKey: item.privateKey })
+      let derived: string
+      let secret = item.privateKey
+      if (family === "solana") {
+        const k = parseSecretKey(item.privateKey) // the address is always derived from the key
+        derived = k.address
+        secret = k.secretKey
+      } else {
+        if (!ethers.isHexString(item.privateKey, 32)) continue
+        derived = new ethers.Wallet(item.privateKey).address
+      }
+      if (seen.has(addrKey(family, derived))) continue
+      seen.add(addrKey(family, derived))
+      valid.push({ address: derived, privateKey: secret })
     } catch {
       /* skip invalid entry */
     }
   }
   if (valid.length === 0) throw new ApiError(400, "No valid wallets found")
-  const batchId = await storeBatch(sanitizeName(name, "Imported wallets"), "Imported", valid)
+  const batchId = await storeBatch(sanitizeName(name, "Imported wallets"), "Imported", valid, family)
   const { count } = await db().from("wallets").select("id", { count: "exact", head: true }).eq("batch_id", batchId)
   const imported = count ?? 0
   return { batchId, imported, skipped: items.length - imported }
@@ -151,7 +173,7 @@ export async function importWallets(items: NewWallet[], name?: string): Promise<
 export async function listWallets(batchId?: string): Promise<PublicWallet[]> {
   let query = db()
     .from("wallets")
-    .select("id,batch_id,address_enc,funding_status,status,mints_completed,meta_enc,created_at")
+    .select("id,batch_id,family,address_enc,funding_status,status,mints_completed,meta_enc,created_at")
     .order("created_at", { ascending: true })
     .order("id", { ascending: true })
     .range(0, 4999)
@@ -166,6 +188,7 @@ export async function listWallets(batchId?: string): Promise<PublicWallet[]> {
     }
     return {
       id: r.id,
+      family: (r.family ?? "evm") as WalletFamily,
       batchId: r.batch_id,
       address: decrypt(r.address_enc, ctx.addr(r.id)),
       fundingStatus: r.funding_status,
@@ -180,7 +203,7 @@ export async function listBatches(): Promise<PublicBatch[]> {
   const rows = must(
     await db()
       .from("wallet_batches")
-      .select("id,name,description,wallet_count,total_mints,created_at,meta_enc")
+      .select("id,family,name,description,wallet_count,total_mints,created_at,meta_enc")
       .order("created_at", { ascending: false })
       .limit(200),
   ) as any[]
@@ -196,7 +219,7 @@ export async function listBatches(): Promise<PublicBatch[]> {
         name = "Unreadable batch"
       }
     }
-    return { id: r.id, name, description, walletCount: r.wallet_count, totalMints: r.total_mints ?? 0, createdAt: r.created_at }
+    return { id: r.id, family: (r.family ?? "evm") as WalletFamily, name, description, walletCount: r.wallet_count, totalMints: r.total_mints ?? 0, createdAt: r.created_at }
   })
 }
 

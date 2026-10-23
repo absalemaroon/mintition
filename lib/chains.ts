@@ -9,6 +9,7 @@
 import logos from "@/lib/chain-logos.json"
 
 export type ChainStatus = "live" | "soon"
+export type ChainFamily = "evm" | "solana"
 
 export interface ChainConfig {
   /** Decimal chain id as a string. Matches the `networkId` state in the dashboard. */
@@ -27,6 +28,11 @@ export interface ChainConfig {
   logo?: string
   /** DexScreener chain slug, for token market data. Missing = data is shown from any chain. */
   dexscreener?: string
+  /** CoinGecko id of the native coin, for USD prices. */
+  coingecko?: string
+  family: ChainFamily
+  /** Decimals of the native coin (18 on EVM chains, 9 for SOL). */
+  nativeDecimals: number
 }
 
 /** Stable colour from the chain name, for entries without a brand colour. */
@@ -230,6 +236,73 @@ const DEXSCREENER: Record<number, string> = {
   1666600000: "harmony",
 }
 
+/** CoinGecko ids of the native coins (USD prices). A missing or wrong id only means no price is shown. */
+const COINGECKO: Record<number, string> = {
+  1: "ethereum",
+  10: "ethereum",
+  14: "flare-networks",
+  25: "crypto-com-chain",
+  40: "telos",
+  50: "xdce-crowd-sale",
+  56: "binancecoin",
+  61: "ethereum-classic",
+  88: "tomochain",
+  100: "xdai",
+  122: "fuse-network-token",
+  130: "ethereum",
+  137: "polygon-ecosystem-token",
+  146: "sonic-3",
+  169: "ethereum",
+  204: "binancecoin",
+  250: "fantom",
+  255: "ethereum",
+  288: "ethereum",
+  314: "filecoin",
+  324: "ethereum",
+  360: "ethereum",
+  361: "theta-fuel",
+  369: "pulsechain",
+  480: "ethereum",
+  592: "astar",
+  690: "ethereum",
+  999: "hyperliquid",
+  1030: "conflux-token",
+  1088: "metis-token",
+  1101: "ethereum",
+  1111: "wemix-token",
+  1116: "coredaoorg",
+  1135: "ethereum",
+  1284: "moonbeam",
+  1285: "moonriver",
+  1329: "sei-network",
+  1514: "story-2",
+  1868: "ethereum",
+  2222: "kava",
+  2741: "ethereum",
+  4689: "iotex",
+  5000: "mantle",
+  7000: "zetachain",
+  7560: "ethereum",
+  8217: "kaia",
+  8453: "ethereum",
+  33139: "apecoin",
+  34443: "ethereum",
+  42161: "ethereum",
+  42170: "ethereum",
+  43114: "avalanche-2",
+  57073: "ethereum",
+  59144: "ethereum",
+  60808: "ethereum",
+  80094: "berachain-bera",
+  81457: "ethereum",
+  167000: "ethereum",
+  534352: "ethereum",
+  7777777: "ethereum",
+  21000000: "ethereum",
+  1313161554: "ethereum",
+  1666600000: "harmony",
+}
+
 function soon(chainId: number, name: string, nativeSymbol: string, explorerUrl: string, extra: { color?: string } = {}): ChainConfig {
   const rpcUrl = PUBLIC_RPC[chainId]
   return {
@@ -241,8 +314,11 @@ function soon(chainId: number, name: string, nativeSymbol: string, explorerUrl: 
     status: rpcUrl ? "live" : "soon",
     color: extra.color ?? colorFromName(name),
     rpcUrl,
-    logo: logoMap[String(chainId)],
+    logo: logoMap[String(chainId)] ?? `/api/logo/chain/${chainId}`,
     dexscreener: DEXSCREENER[chainId],
+    coingecko: COINGECKO[chainId],
+    family: "evm",
+    nativeDecimals: 18,
   }
 }
 
@@ -256,8 +332,26 @@ export const CHAINS: ChainConfig[] = [
     status: "live",
     color: "#FCFF52",
     rpcUrl: "https://forno.celo.org",
-    logo: logoMap["42220"],
+    logo: logoMap["42220"] ?? "/api/logo/chain/42220",
     dexscreener: "celo",
+    coingecko: "celo",
+    family: "evm",
+    nativeDecimals: 18,
+  },
+  {
+    id: "101",
+    chainId: 101, // internal id for Solana mainnet (Solana has no EVM chain id)
+    name: "Solana",
+    nativeSymbol: "SOL",
+    explorerUrl: "https://solscan.io",
+    status: "live",
+    color: "#9945FF",
+    rpcUrl: "https://api.mainnet-beta.solana.com",
+    logo: logoMap["101"] ?? "/api/logo/chain/101",
+    dexscreener: "solana",
+    coingecko: "solana",
+    family: "solana",
+    nativeDecimals: 9,
   },
   soon(1, "Ethereum", "ETH", "https://etherscan.io", { color: "#627EEA" }),
   soon(56, "BNB Smart Chain", "BNB", "https://bscscan.com", { color: "#F0B90B" }),
@@ -387,11 +481,18 @@ export function isLiveChain(chainId: number | string): boolean {
 
 export function explorerTxUrl(chain: ChainConfig, hash: string): string | null {
   if (!chain.explorerUrl) return null
-  return /^0x[0-9a-fA-F]{64}$/.test(hash) ? `${chain.explorerUrl}/tx/${hash}` : null
+  const ok = chain.family === "solana" ? /^[1-9A-HJ-NP-Za-km-z]{80,90}$/.test(hash) : /^0x[0-9a-fA-F]{64}$/.test(hash)
+  return ok ? `${chain.explorerUrl}/tx/${hash}` : null
 }
 
 export function explorerAddressUrl(chain: ChainConfig, address: string): string | null {
-  return chain.explorerUrl ? `${chain.explorerUrl}/address/${address}` : null
+  if (!chain.explorerUrl) return null
+  return chain.family === "solana" ? `${chain.explorerUrl}/account/${address}` : `${chain.explorerUrl}/address/${address}`
+}
+
+/** Address check for the chain's family (format only, no network call). */
+export function isValidAddress(chain: ChainConfig, value: string): boolean {
+  return chain.family === "solana" ? /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value) : /^0x[0-9a-fA-F]{40}$/.test(value)
 }
 
 export function shortAddress(value: string, head = 6, tail = 4): string {

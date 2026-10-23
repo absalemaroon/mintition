@@ -121,7 +121,7 @@ export function AutoFundingSection({ wallets, onWalletsUpdate, nativeSymbol = "C
       {/* Left: the form */}
       <Card className="lg:col-span-3">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
+          <CardTitle className="flex items-center gap-2">
             <Lock className="size-5" aria-hidden="true" />
             Automated Wallet Funding
           </CardTitle>

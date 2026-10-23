@@ -1,8 +1,11 @@
 export type FundingStatus = "not_funded" | "funding" | "funded" | "funding_failed"
 
 /** A wallet as the browser sees it. The private key never leaves the server vault. */
+export type WalletFamily = "evm" | "solana"
+
 export interface MintWallet {
   id: string
+  family?: WalletFamily
   batchId?: string | null
   address: string
   funded: boolean
@@ -30,6 +33,7 @@ export interface Transaction {
 
 export interface BatchInfo {
   id: string
+  family: WalletFamily
   name: string
   description: string
   walletCount: number

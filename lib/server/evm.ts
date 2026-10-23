@@ -58,6 +58,10 @@ export const NATIVE_TOKEN_ADDRESS = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"
 export async function checkChain(chainId: number): Promise<{ ok: boolean; ms: number; block?: number; error?: string }> {
   const started = Date.now()
   try {
+    if (chainOrThrow(chainId).family === "solana") {
+      const { getBlockHeight } = await import("@/lib/server/solana/rpc")
+      return { ok: true, ms: Date.now() - started, block: await getBlockHeight() }
+    }
     const provider = await getProvider(chainId)
     const block = await Promise.race([
       provider.getBlockNumber(),

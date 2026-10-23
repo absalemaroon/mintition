@@ -53,7 +53,7 @@ const schema = z.discriminatedUnion("kind", [
     symbol: z.string().max(20).optional(),
     destination: z.discriminatedUnion("type", [
       z.object({ type: z.literal("address"), address: z.string().max(64) }),
-      z.object({ type: z.literal("batch"), batchId: uuid, pairing: z.enum(["sequential", "random"]).default("sequential") }),
+      z.object({ type: z.literal("batch"), batchId: uuid, pairing: z.enum(["sequential", "random", "all"]).default("sequential") }),
     ]),
   }),
 ])
